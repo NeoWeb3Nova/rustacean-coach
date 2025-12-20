@@ -10,6 +10,10 @@ import { translations } from './translations';
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.DASHBOARD);
   const [artifacts, setArtifacts] = useState<LearningArtifact[]>([]);
+  const [customTopics, setCustomTopics] = useState<string[] | null>(() => {
+    const saved = localStorage.getItem('rust_custom_topics');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('rust_mentor_lang') as Language) || 'en';
   });
@@ -17,6 +21,14 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('rust_mentor_lang', language);
   }, [language]);
+
+  useEffect(() => {
+    if (customTopics) {
+      localStorage.setItem('rust_custom_topics', JSON.stringify(customTopics));
+    } else {
+      localStorage.removeItem('rust_custom_topics');
+    }
+  }, [customTopics]);
 
   // Load from local storage on mount
   useEffect(() => {
@@ -51,10 +63,20 @@ const App: React.FC = () => {
     setLanguage(prev => prev === 'en' ? 'zh' : 'en');
   };
 
+  const handleUpdateTopics = (topics: string[]) => {
+    setCustomTopics(topics.length > 0 ? topics : null);
+  };
+
   const renderContent = () => {
     switch (activeMode) {
       case AppMode.DASHBOARD:
-        return <Dashboard language={language} />;
+        return (
+          <Dashboard 
+            language={language} 
+            customTopics={customTopics} 
+            onUpdateTopics={handleUpdateTopics} 
+          />
+        );
       case AppMode.LEARN:
         return <ChatWindow mode="COACH" language={language} onNewArtifact={handleAddArtifact} />;
       case AppMode.FEYNMAN:
@@ -62,7 +84,13 @@ const App: React.FC = () => {
       case AppMode.ARTIFACTS:
         return <ArtifactsList artifacts={artifacts} language={language} />;
       default:
-        return <Dashboard language={language} />;
+        return (
+          <Dashboard 
+            language={language} 
+            customTopics={customTopics} 
+            onUpdateTopics={handleUpdateTopics} 
+          />
+        );
     }
   };
 

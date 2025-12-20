@@ -40,6 +40,11 @@ export const translations = {
     noArtifacts: "No artifacts generated yet. Complete a learning session.",
     artifactSaved: "Knowledge Artifact successfully generated and saved!",
     switchLang: "中文",
+    uploadPdf: "Import PDF Curriculum",
+    processingPdf: "Analyzing document and generating roadmap...",
+    pdfError: "Failed to process PDF. Please ensure it's a valid document.",
+    roadmapFromDoc: "Custom Roadmap from Document",
+    defaultRoadmap: "Standard Rust Roadmap",
     rustTopics: [
       "Ownership & Borrowing",
       "Lifetimes",
@@ -93,6 +98,11 @@ export const translations = {
     noArtifacts: "尚未生成任何成果。完成学习会话即可保存进度。",
     artifactSaved: "知识成果已成功生成并保存到本地库！",
     switchLang: "English",
+    uploadPdf: "导入 PDF 课程文档",
+    processingPdf: "正在分析文档并生成学习路线图...",
+    pdfError: "处理 PDF 失败。请确保文件格式正确。",
+    roadmapFromDoc: "自定义文档路线图",
+    defaultRoadmap: "标准 Rust 学习路线",
     rustTopics: [
       "所有权与借用",
       "生命周期",

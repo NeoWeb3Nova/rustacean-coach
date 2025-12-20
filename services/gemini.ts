@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { Message, Language } from "../types";
 
 const API_KEY = process.env.API_KEY || "";
@@ -41,6 +41,44 @@ export const generateLearningResponse = async (
   });
 
   return response;
+};
+
+export const analyzePdfForCurriculum = async (base64Pdf: string, language: Language) => {
+  const ai = getGeminiModel();
+  const langText = language === 'zh' ? 'Chinese' : 'English';
+  
+  const prompt = `Analyze this PDF document and extract its main chapters or learning sections to create a structured Rust programming curriculum. 
+Return a JSON array of strings, where each string is a chapter title. 
+The output should be primarily in ${langText}.
+Ensure the chapters follow the logical order of the document.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: [
+      {
+        parts: [
+          {
+            inlineData: {
+              mimeType: 'application/pdf',
+              data: base64Pdf,
+            },
+          },
+          { text: prompt },
+        ],
+      },
+    ],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.STRING,
+        },
+      },
+    },
+  });
+
+  return JSON.parse(response.text || "[]") as string[];
 };
 
 export const getSystemPrompt = (lang: Language) => {
