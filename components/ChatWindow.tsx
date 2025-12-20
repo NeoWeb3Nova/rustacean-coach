@@ -1,0 +1,167 @@
+
+import React, { useState, useRef, useEffect } from 'react';
+import { Message } from '../types';
+import { Icons } from '../constants';
+import { generateLearningResponse, RUST_TUTOR_PROMPT } from '../services/gemini';
+
+interface ChatWindowProps {
+  mode: 'COACH' | 'FEYNMAN';
+  onNewArtifact?: (content: string) => void;
+}
+
+const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isLoading]);
+
+  const handleSend = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage: Message = {
+      role: 'user',
+      text: input,
+      timestamp: Date.now()
+    };
+
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const systemInstruction = `${RUST_TUTOR_PROMPT} \nCurrently in ${mode} mode. ${
+        mode === 'FEYNMAN' ? 'Wait for the user to explain a concept and then critique it.' : 'The user will ask questions or request a curriculum.'
+      }`;
+      
+      const stream = await generateLearningResponse(newMessages, systemInstruction, true);
+      let fullResponse = "";
+      
+      setMessages(prev => [...prev, { role: 'model', text: '', timestamp: Date.now() }]);
+
+      // @ts-ignore - Handle stream as async iterable
+      for await (const chunk of stream) {
+        fullResponse += chunk.text;
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1].text = fullResponse;
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.error("Gemini Error:", err);
+      setMessages(prev => [...prev, { 
+        role: 'system', 
+        text: "Error connecting to mentor. Please check your connection.", 
+        timestamp: Date.now() 
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateArtifact = async () => {
+    if (messages.length < 2) return;
+    setIsLoading(true);
+    // Artifact logic would go here
+    const content = messages.map(m => `**${m.role.toUpperCase()}**: ${m.text}`).join('\n\n');
+    if (onNewArtifact) onNewArtifact(content);
+    setIsLoading(false);
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="p-4 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
+        <div>
+          <h2 className="font-bold text-white">
+            {mode === 'COACH' ? 'Rust Coach' : 'Feynman Explanation Lab'}
+          </h2>
+          <p className="text-xs text-[#8b949e]">
+            {mode === 'COACH' ? 'Interactive mentorship and roadmap guidance' : 'Explain it to me like I am five'}
+          </p>
+        </div>
+        <button 
+          onClick={handleGenerateArtifact}
+          className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md font-medium transition-colors"
+        >
+          Generate Artifact
+        </button>
+      </div>
+
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-center p-8 opacity-50">
+            <div className="mb-4">
+              <Icons.Terminal />
+            </div>
+            <h3 className="text-lg font-medium mb-2">Initialize Session</h3>
+            <p className="text-sm max-w-sm">
+              {mode === 'COACH' 
+                ? "Start by asking for a learning path or a specific Rust question (e.g., 'Explain ownership in detail')." 
+                : "Choose a topic and explain it to the mentor. The mentor will find your knowledge gaps."}
+            </p>
+          </div>
+        )}
+        
+        {messages.map((m, idx) => (
+          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[85%] rounded-lg p-3 text-sm leading-relaxed ${
+              m.role === 'user' 
+                ? 'bg-[#1f6feb] text-white rounded-br-none' 
+                : m.role === 'system'
+                  ? 'bg-red-900/20 text-red-400 border border-red-900/30'
+                  : 'bg-[#21262d] text-[#c9d1d9] border border-[#30363d] rounded-bl-none'
+            }`}>
+              <div className="prose prose-invert max-w-none whitespace-pre-wrap">
+                {m.text}
+              </div>
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start">
+            <div className="bg-[#21262d] border border-[#30363d] rounded-lg p-3 rounded-bl-none">
+              <div className="flex gap-1">
+                <div className="w-1.5 h-1.5 bg-[#8b949e] rounded-full animate-bounce"></div>
+                <div className="w-1.5 h-1.5 bg-[#8b949e] rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                <div className="w-1.5 h-1.5 bg-[#8b949e] rounded-full animate-bounce [animation-delay:0.4s]"></div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 border-t border-[#30363d] bg-[#0d1117]">
+        <div className="relative flex items-end gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={mode === 'COACH' ? "Ask anything about Rust..." : "Explain a concept here..."}
+            className="flex-1 bg-[#0d1117] border border-[#30363d] rounded-md p-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#1f6feb] min-h-[44px] max-h-32 resize-none"
+          />
+          <button 
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading}
+            className="p-2.5 bg-[#1f6feb] hover:bg-[#388bfd] disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-md transition-colors"
+          >
+            <Icons.Send />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ChatWindow;
