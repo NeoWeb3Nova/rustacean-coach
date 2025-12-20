@@ -1,40 +1,77 @@
 
 import React, { useState } from 'react';
-import { Language } from '../types';
+import { Language, UserProgress } from '../types';
 import { translations } from '../translations';
 import { analyzePdfForCurriculum } from '../services/gemini';
+
+const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50MB limit
 
 interface DashboardProps {
   language: Language;
   customTopics: string[] | null;
   onUpdateTopics: (topics: string[]) => void;
+  progress: UserProgress;
+  artifactsCount: number;
+  onStartLesson: (index: number) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ language, customTopics, onUpdateTopics }) => {
+const Dashboard: React.FC<DashboardProps> = ({ 
+  language, 
+  customTopics, 
+  onUpdateTopics, 
+  progress, 
+  artifactsCount,
+  onStartLesson 
+}) => {
   const t = translations[language];
   const [isUploading, setIsUploading] = useState(false);
   
   const topicsToShow = customTopics || t.rustTopics;
+  const coverage = Math.round((progress.completedChapters.length / topicsToShow.length) * 100);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (file.size > MAX_PDF_SIZE) {
+      alert(t.pdfSizeError);
+      event.target.value = '';
+      return;
+    }
+
     setIsUploading(true);
     try {
       const reader = new FileReader();
+      reader.onerror = () => {
+        alert(t.pdfError);
+        setIsUploading(false);
+      };
+      
       reader.onload = async (e) => {
-        const base64 = (e.target?.result as string).split(',')[1];
-        const newTopics = await analyzePdfForCurriculum(base64, language);
-        if (newTopics && newTopics.length > 0) {
-          onUpdateTopics(newTopics);
+        try {
+          const result = e.target?.result;
+          if (typeof result !== 'string') throw new Error("Invalid file read");
+          
+          const base64 = result.split(',')[1];
+          const newTopics = await analyzePdfForCurriculum(base64, language);
+          
+          if (newTopics && newTopics.length > 0) {
+            onUpdateTopics(newTopics);
+          } else {
+            throw new Error("No topics extracted");
+          }
+        } catch (error) {
+          console.error("PDF Processing Error:", error);
+          alert(t.pdfError);
+        } finally {
+          setIsUploading(false);
+          event.target.value = '';
         }
       };
       reader.readAsDataURL(file);
     } catch (error) {
       console.error("PDF Upload Error:", error);
       alert(t.pdfError);
-    } finally {
       setIsUploading(false);
     }
   };
@@ -81,24 +118,31 @@ const Dashboard: React.FC<DashboardProps> = ({ language, customTopics, onUpdateT
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-sm">
           <p className="text-xs font-bold text-[#8b949e] uppercase mb-1">{t.knowledgeCoverage}</p>
-          <div className="text-3xl font-bold text-white">
-            {customTopics ? '0%' : '42%'}
-          </div>
+          <div className="text-3xl font-bold text-white">{coverage}%</div>
           <div className="mt-4 w-full bg-[#30363d] h-2 rounded-full overflow-hidden">
-            <div className="bg-[#238636] h-full" style={{ width: customTopics ? '0%' : '42%' }}></div>
+            <div className="bg-[#238636] h-full transition-all duration-700" style={{ width: `${coverage}%` }}></div>
           </div>
-          <p className="text-xs text-[#8b949e] mt-4 italic">{t.nextTarget}</p>
+          <p className="text-xs text-[#8b949e] mt-4 italic">
+            {coverage === 100 ? "Mastery achieved!" : `${t.nextTarget}: ${topicsToShow[progress.currentChapterIndex] || '---'}`}
+          </p>
         </div>
         
         <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-sm">
           <p className="text-xs font-bold text-[#8b949e] uppercase mb-1">{t.feynmanScore}</p>
-          <div className="text-3xl font-bold text-[#f85149]">8.4/10</div>
-          <p className="text-sm text-[#c9d1d9] mt-2">{t.feynmanScoreSub}</p>
+          <div className="text-3xl font-bold text-[#f85149]">
+            {progress.completedChapters.length > 0 ? (7 + (progress.completedChapters.length * 0.3)).toFixed(1) : '0.0'}/10
+          </div>
+          <p className="text-sm text-[#c9d1d9] mt-2">
+            {progress.completedChapters.length === 0 ? 
+              (language === 'zh' ? '开始你的第一次会话以获得评分' : 'Start your first session to get a score') : 
+              t.feynmanScoreSub
+            }
+          </p>
         </div>
 
         <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-sm">
           <p className="text-xs font-bold text-[#8b949e] uppercase mb-1">{t.knowledgeArtifacts}</p>
-          <div className="text-3xl font-bold text-white">12</div>
+          <div className="text-3xl font-bold text-white">{artifactsCount}</div>
           <p className="text-sm text-[#8b949e] mt-2">{t.artifactsSub}</p>
         </div>
       </div>
@@ -107,51 +151,77 @@ const Dashboard: React.FC<DashboardProps> = ({ language, customTopics, onUpdateT
         <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-white">{t.masteryRoadmap}</h2>
-            <span className="text-[10px] bg-[#21262d] text-[#8b949e] px-2 py-0.5 rounded border border-[#30363d] font-mono">
-              {customTopics ? t.roadmapFromDoc : t.defaultRoadmap}
-            </span>
+            <div className="flex gap-2">
+              <span className="text-[10px] bg-[#21262d] text-[#8b949e] px-2 py-0.5 rounded border border-[#30363d] font-mono">
+                {customTopics ? t.roadmapFromDoc : t.defaultRoadmap}
+              </span>
+              {customTopics && (
+                <button 
+                  onClick={() => onUpdateTopics([])}
+                  className="text-[10px] text-[#58a6ff] hover:underline"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
           </div>
           <div className="space-y-3">
-            {topicsToShow.map((topic, i) => (
-              <div key={topic} className="flex items-center gap-4 bg-[#161b22] border border-[#30363d] p-4 rounded-lg hover:border-[#484f58] transition-colors">
-                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                  !customTopics && i < 3 ? 'bg-[#238636] border-[#238636] text-white' : i === 0 && customTopics ? 'border-[#f2cc60] text-[#f2cc60]' : 'border-[#30363d] text-[#8b949e]'
-                }`}>
-                  {!customTopics && i < 3 ? '✓' : i + 1}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${(!customTopics && i < 3) ? 'text-white' : 'text-[#c9d1d9]'}`}>{topic}</p>
-                  <div className="h-1 bg-[#30363d] mt-2 rounded-full overflow-hidden">
-                    <div className={`h-full ${(!customTopics && i < 3) ? 'bg-[#238636] w-full' : (customTopics && i === 0) ? 'bg-[#f2cc60] w-[10%]' : 'w-0'}`}></div>
+            {topicsToShow.map((topic, i) => {
+              const isCompleted = progress.completedChapters.includes(i);
+              const isActive = i === progress.currentChapterIndex;
+              const isLocked = i > progress.currentChapterIndex;
+
+              return (
+                <div 
+                  key={topic} 
+                  className={`flex items-center gap-4 bg-[#161b22] border p-4 rounded-lg transition-all ${
+                    isActive ? 'border-[#1f6feb] ring-1 ring-[#1f6feb]/30 shadow-lg' : 'border-[#30363d]'
+                  } ${isLocked ? 'opacity-50 grayscale' : ''}`}
+                >
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    isCompleted ? 'bg-[#238636] text-white' : isActive ? 'bg-[#1f6feb] text-white' : 'bg-[#30363d] text-[#8b949e]'
+                  }`}>
+                    {isCompleted ? '✓' : i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${isLocked ? 'text-[#8b949e]' : 'text-white'}`}>{topic}</p>
+                    {isActive && (
+                      <button 
+                        onClick={() => onStartLesson(i)}
+                        className="mt-2 text-xs text-[#1f6feb] font-bold hover:underline flex items-center gap-1"
+                      >
+                        {t.startLesson} →
+                      </button>
+                    )}
+                    {isLocked && <p className="text-[10px] text-[#8b949e] mt-1 italic">{t.lockedLesson}</p>}
+                    {isCompleted && <p className="text-[10px] text-[#238636] mt-1 font-bold">Chapter Mastered</p>}
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {customTopics && (
-            <button 
-              onClick={() => onUpdateTopics([])}
-              className="mt-4 text-xs text-[#58a6ff] hover:underline"
-            >
-              Reset to default roadmap
-            </button>
-          )}
         </section>
 
         <section className="space-y-8">
           <div>
             <h2 className="text-lg font-bold text-white mb-4">{t.recentInsights}</h2>
             <div className="bg-[#161b22] border border-[#30363d] rounded-lg divide-y divide-[#30363d] shadow-sm">
-              {[
-                language === 'zh' ? "T, &T 和 &mut T 的区别终于搞明白了。" : "The difference between T, &T, and &mut T is finally clicking.",
-                language === 'zh' ? "生命周期只是编译器的一个静态分析工具。" : "Lifetimes are just a static analysis tool for the compiler.",
-                language === 'zh' ? "需要复习多线程环境下的 Arc vs Rc 模式。" : "Need to review Arc vs Rc patterns in multithreaded contexts."
-              ].map((insight, i) => (
-                <div key={i} className="p-4 flex gap-4">
-                  <div className="w-1.5 h-1.5 bg-[#f85149] rounded-full mt-2 flex-shrink-0"></div>
-                  <p className="text-sm text-[#c9d1d9] italic">"{insight}"</p>
+              {progress.completedChapters.length === 0 ? (
+                <div className="p-8 text-center text-[#8b949e] italic text-sm">
+                  {language === 'zh' ? '还没有学习见解。完成章节以发现！' : 'No insights yet. Complete chapters to discover them!'}
                 </div>
-              ))}
+              ) : (
+                [
+                  language === 'zh' ? "T, &T 和 &mut T 的区别终于搞明白了。" : "The difference between T, &T, and &mut T is finally clicking.",
+                  language === 'zh' ? "生命周期只是编译器的一个静态分析工具。" : "Lifetimes are just a static analysis tool for the compiler.",
+                  language === 'zh' ? "需要复习多线程环境下的 Arc vs Rc 模式。" : "Need to review Arc vs Rc patterns in multithreaded contexts."
+                ].slice(0, progress.completedChapters.length).map((insight, i) => (
+                  <div key={i} className="p-4 flex gap-4 animate-in slide-in-from-left duration-300">
+                    <div className="w-1.5 h-1.5 bg-[#f85149] rounded-full mt-2 flex-shrink-0"></div>
+                    <p className="text-sm text-[#c9d1d9] italic">"{insight}"</p>
+                  </div>
+                ))
+              )}
             </div>
           </div>
           

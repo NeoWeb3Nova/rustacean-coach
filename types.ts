@@ -5,7 +5,15 @@ export enum AppMode {
   DASHBOARD = 'DASHBOARD',
   LEARN = 'LEARN',
   FEYNMAN = 'FEYNMAN',
-  ARTIFACTS = 'ARTIFACTS'
+  ARTIFACTS = 'ARTIFACTS',
+  QUIZ = 'QUIZ'
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
 }
 
 export interface Message {
@@ -22,15 +30,9 @@ export interface LearningArtifact {
   tags: string[];
 }
 
-export interface LearningPath {
-  topic: string;
-  status: 'todo' | 'in-progress' | 'completed';
-  description: string;
-}
-
 export interface UserProgress {
   currentLevel: string;
-  completedTopics: string[];
+  completedChapters: number[]; // Array of indices
+  currentChapterIndex: number;
   totalSessions: number;
-  lastActive: string;
 }

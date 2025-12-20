@@ -4,7 +4,8 @@ import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import ChatWindow from './components/ChatWindow';
 import ArtifactsList from './components/ArtifactsList';
-import { AppMode, LearningArtifact, Language } from './types';
+import QuizView from './components/QuizView';
+import { AppMode, LearningArtifact, Language, UserProgress } from './types';
 import { translations } from './translations';
 
 const App: React.FC = () => {
@@ -14,6 +15,17 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('rust_custom_topics');
     return saved ? JSON.parse(saved) : null;
   });
+  
+  const [progress, setProgress] = useState<UserProgress>(() => {
+    const saved = localStorage.getItem('rust_user_progress');
+    return saved ? JSON.parse(saved) : {
+      currentLevel: 'Beginner',
+      completedChapters: [],
+      currentChapterIndex: 0,
+      totalSessions: 0
+    };
+  });
+
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('rust_mentor_lang') as Language) || 'en';
   });
@@ -23,6 +35,10 @@ const App: React.FC = () => {
   }, [language]);
 
   useEffect(() => {
+    localStorage.setItem('rust_user_progress', JSON.stringify(progress));
+  }, [progress]);
+
+  useEffect(() => {
     if (customTopics) {
       localStorage.setItem('rust_custom_topics', JSON.stringify(customTopics));
     } else {
@@ -30,7 +46,6 @@ const App: React.FC = () => {
     }
   }, [customTopics]);
 
-  // Load from local storage on mount
   useEffect(() => {
     const saved = localStorage.getItem('rust_artifacts');
     if (saved) {
@@ -65,7 +80,27 @@ const App: React.FC = () => {
 
   const handleUpdateTopics = (topics: string[]) => {
     setCustomTopics(topics.length > 0 ? topics : null);
+    setProgress(prev => ({ ...prev, currentChapterIndex: 0, completedChapters: [] }));
   };
+
+  const handlePassQuiz = () => {
+    setProgress(prev => ({
+      ...prev,
+      completedChapters: [...new Set([...prev.completedChapters, prev.currentChapterIndex])],
+      currentChapterIndex: prev.currentChapterIndex + 1
+    }));
+    setActiveMode(AppMode.DASHBOARD);
+  };
+
+  const handleReset = () => {
+    if (window.confirm(language === 'zh' ? '确定要重置所有进度吗？这将清除所有本地数据。' : 'Are you sure you want to reset all progress? This will clear all local data.')) {
+      localStorage.clear();
+      window.location.reload();
+    }
+  };
+
+  const topicsCount = customTopics ? customTopics.length : translations[language].rustTopics.length;
+  const currentChapterTitle = (customTopics || translations[language].rustTopics)[progress.currentChapterIndex];
 
   const renderContent = () => {
     switch (activeMode) {
@@ -75,22 +110,46 @@ const App: React.FC = () => {
             language={language} 
             customTopics={customTopics} 
             onUpdateTopics={handleUpdateTopics} 
+            progress={progress}
+            artifactsCount={artifacts.length}
+            onStartLesson={(index) => {
+              setProgress(prev => ({ ...prev, currentChapterIndex: index }));
+              setActiveMode(AppMode.LEARN);
+            }}
           />
         );
       case AppMode.LEARN:
-        return <ChatWindow mode="COACH" language={language} onNewArtifact={handleAddArtifact} />;
+        return (
+          <ChatWindow 
+            mode="COACH" 
+            language={language} 
+            onNewArtifact={handleAddArtifact} 
+            chapterContext={currentChapterTitle}
+            onStartQuiz={() => setActiveMode(AppMode.QUIZ)}
+          />
+        );
+      case AppMode.QUIZ:
+        return (
+          <QuizView 
+            language={language} 
+            chapterTitle={currentChapterTitle}
+            onPass={handlePassQuiz}
+            onFail={() => setActiveMode(AppMode.DASHBOARD)}
+          />
+        );
       case AppMode.FEYNMAN:
         return <ChatWindow mode="FEYNMAN" language={language} onNewArtifact={handleAddArtifact} />;
       case AppMode.ARTIFACTS:
         return <ArtifactsList artifacts={artifacts} language={language} />;
       default:
-        return (
-          <Dashboard 
-            language={language} 
-            customTopics={customTopics} 
-            onUpdateTopics={handleUpdateTopics} 
-          />
-        );
+        return <Dashboard 
+          language={language} 
+          customTopics={customTopics} 
+          onUpdateTopics={handleUpdateTopics} 
+          progress={progress}
+          artifactsCount={artifacts.length}
+          onStartLesson={(index) => setActiveMode(AppMode.LEARN)}
+        />;
     }
   };
 
@@ -100,6 +159,9 @@ const App: React.FC = () => {
       onModeChange={setActiveMode} 
       language={language} 
       onLanguageToggle={handleLanguageToggle}
+      onReset={handleReset}
+      progressPercent={Math.round((progress.completedChapters.length / topicsCount) * 100)}
+      level={progress.completedChapters.length > 5 ? 'Intermediate' : 'Beginner'}
     >
       {renderContent()}
     </Layout>

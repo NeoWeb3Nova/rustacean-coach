@@ -10,9 +10,21 @@ interface LayoutProps {
   onModeChange: (mode: AppMode) => void;
   language: Language;
   onLanguageToggle: () => void;
+  onReset: () => void;
+  progressPercent: number;
+  level: string;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeMode, onModeChange, language, onLanguageToggle }) => {
+const Layout: React.FC<LayoutProps> = ({ 
+  children, 
+  activeMode, 
+  onModeChange, 
+  language, 
+  onLanguageToggle, 
+  onReset,
+  progressPercent,
+  level 
+}) => {
   const t = translations[language];
   
   const navItems = [
@@ -49,22 +61,34 @@ const Layout: React.FC<LayoutProps> = ({ children, activeMode, onModeChange, lan
         </nav>
 
         <div className="p-4 space-y-4 border-t border-[#30363d]">
-          <button 
-            onClick={onLanguageToggle}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-[#8b949e] hover:text-white bg-[#21262d] rounded-md border border-[#30363d] transition-colors"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
-            </svg>
-            {t.switchLang}
-          </button>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={onLanguageToggle}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-[#8b949e] hover:text-white bg-[#21262d] rounded-md border border-[#30363d] transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+              </svg>
+              {t.switchLang}
+            </button>
+
+            <button 
+              onClick={onReset}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[10px] font-bold text-[#f85149] hover:bg-red-900/10 rounded-md transition-colors opacity-50 hover:opacity-100"
+            >
+              {language === 'zh' ? '重置应用' : 'Reset App'}
+            </button>
+          </div>
 
           <div className="bg-[#0d1117] p-3 rounded-lg border border-[#30363d]">
             <p className="text-[10px] uppercase text-[#8b949e] font-bold mb-1">{t.learningStatus}</p>
             <div className="w-full bg-[#30363d] h-1.5 rounded-full overflow-hidden">
-              <div className="bg-[#238636] h-full w-[45%]"></div>
+              <div 
+                className="bg-[#238636] h-full transition-all duration-500" 
+                style={{ width: `${progressPercent}%` }}
+              ></div>
             </div>
-            <p className="text-xs text-[#8b949e] mt-2">{t.level}</p>
+            <p className="text-xs text-[#8b949e] mt-2 capitalize">{level}</p>
           </div>
         </div>
       </aside>

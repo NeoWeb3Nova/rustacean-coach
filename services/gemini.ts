@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { Message, Language } from "../types";
+import { Message, Language, QuizQuestion } from "../types";
 
 const API_KEY = process.env.API_KEY || "";
 
@@ -81,11 +81,48 @@ Ensure the chapters follow the logical order of the document.`;
   return JSON.parse(response.text || "[]") as string[];
 };
 
-export const getSystemPrompt = (lang: Language) => {
+export const generateQuizForChapter = async (chapterTitle: string, language: Language) => {
+  const ai = getGeminiModel();
+  const langText = language === 'zh' ? 'Chinese' : 'English';
+
+  const prompt = `Generate a 3-question multiple choice quiz for the Rust programming topic: "${chapterTitle}". 
+For each question, provide 4 options, the correct answer index (0-3), and a brief explanation.
+Language: ${langText}.
+Return ONLY JSON.`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            question: { type: Type.STRING },
+            options: { type: Type.ARRAY, items: { type: Type.STRING } },
+            correctAnswerIndex: { type: Type.NUMBER },
+            explanation: { type: Type.STRING }
+          },
+          required: ["question", "options", "correctAnswerIndex", "explanation"]
+        }
+      }
+    }
+  });
+
+  return JSON.parse(response.text || "[]") as QuizQuestion[];
+};
+
+export const getSystemPrompt = (lang: Language, contextChapter?: string) => {
   const langText = lang === 'zh' ? 'Chinese' : 'English';
+  const chapterFocus = contextChapter 
+    ? `\nCURRENT CHAPTER FOCUS: "${contextChapter}". Keep explanations and exercises strictly related to this topic.`
+    : "";
+
   return `You are a world-class Rust Programming Mentor. 
 Your goal is to help the user master Rust using the Feynman Technique. 
-IMPORTANT: Please respond primarily in ${langText}.
+IMPORTANT: Please respond primarily in ${langText}.${chapterFocus}
 
 Key principles:
 1. Encourage deep understanding over rote memorization.

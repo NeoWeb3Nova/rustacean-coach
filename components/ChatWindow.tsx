@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, Language } from '../types';
+import { Message, Language, AppMode } from '../types';
 import { Icons } from '../constants';
 import { generateLearningResponse, getSystemPrompt } from '../services/gemini';
 import { translations } from '../translations';
@@ -9,9 +9,11 @@ interface ChatWindowProps {
   mode: 'COACH' | 'FEYNMAN';
   language: Language;
   onNewArtifact?: (content: string) => void;
+  chapterContext?: string;
+  onStartQuiz?: () => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, chapterContext, onStartQuiz }) => {
   const t = translations[language];
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -39,7 +41,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact }
     setIsLoading(true);
 
     try {
-      const basePrompt = getSystemPrompt(language);
+      const basePrompt = getSystemPrompt(language, chapterContext);
       const systemInstruction = `${basePrompt} \nCurrently in ${mode} mode. ${
         mode === 'FEYNMAN' ? 'Wait for the user to explain a concept and then critique it.' : 'The user will ask questions or request a curriculum.'
       }`;
@@ -81,20 +83,37 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact }
   return (
     <div className="flex flex-col h-full">
       <div className="p-4 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
-        <div>
-          <h2 className="font-bold text-white">
-            {mode === 'COACH' ? t.coachTitle : t.feynmanTitle}
-          </h2>
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="font-bold text-white">
+              {mode === 'COACH' ? t.coachTitle : t.feynmanTitle}
+            </h2>
+            {chapterContext && (
+              <span className="text-[10px] px-2 py-0.5 bg-[#1f6feb22] text-[#58a6ff] border border-[#1f6feb44] rounded uppercase font-bold">
+                Chapter Focus
+              </span>
+            )}
+          </div>
           <p className="text-xs text-[#8b949e]">
-            {mode === 'COACH' ? t.coachSub : t.feynmanSub}
+            {chapterContext ? `${chapterContext}` : (mode === 'COACH' ? t.coachSub : t.feynmanSub)}
           </p>
         </div>
-        <button 
-          onClick={handleGenerateArtifact}
-          className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md font-medium transition-colors"
-        >
-          {t.genArtifact}
-        </button>
+        <div className="flex gap-2">
+          {chapterContext && messages.length >= 4 && (
+            <button 
+              onClick={onStartQuiz}
+              className="text-xs bg-[#1f6feb] hover:bg-[#388bfd] text-white px-3 py-1.5 rounded-md font-bold transition-all animate-pulse"
+            >
+              {t.takeQuiz}
+            </button>
+          )}
+          <button 
+            onClick={handleGenerateArtifact}
+            className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md font-medium transition-colors"
+          >
+            {t.genArtifact}
+          </button>
+        </div>
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
