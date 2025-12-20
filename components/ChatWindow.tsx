@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message, Language, AppMode } from '../types';
 import { Icons } from '../constants';
-import { generateLearningResponse, getSystemPrompt } from '../services/gemini';
+import { generateLearningResponse, getSystemPrompt } from '../services/llm';
 import { translations } from '../translations';
 
 interface ChatWindowProps {
@@ -46,14 +46,26 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
         mode === 'FEYNMAN' ? 'Wait for the user to explain a concept and then critique it.' : 'The user will ask questions or request a curriculum.'
       }`;
       
-      const stream = await generateLearningResponse(newMessages, systemInstruction, true);
+      const response = await generateLearningResponse(newMessages, systemInstruction, true);
       let fullResponse = "";
       
       setMessages(prev => [...prev, { role: 'model', text: '', timestamp: Date.now() }]);
 
-      // @ts-ignore - Handle stream as async iterable
-      for await (const chunk of stream) {
-        fullResponse += chunk.text;
+      if (typeof response === 'object' && Symbol.asyncIterator in response) {
+        // Handle stream
+        // @ts-ignore
+        for await (const chunk of response) {
+          fullResponse += chunk.text;
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1].text = fullResponse;
+            return updated;
+          });
+        }
+      } else {
+        // Handle single response from other providers
+        // @ts-ignore
+        fullResponse = response.text;
         setMessages(prev => {
           const updated = [...prev];
           updated[updated.length - 1].text = fullResponse;
@@ -61,10 +73,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
         });
       }
     } catch (err) {
-      console.error("Gemini Error:", err);
+      console.error("LLM Error:", err);
       setMessages(prev => [...prev, { 
         role: 'system', 
-        text: language === 'zh' ? "连接导师失败，请检查网络。" : "Error connecting to mentor. Please check your connection.", 
+        text: language === 'zh' ? "连接导师失败，请检查网络或配置。" : "Error connecting to mentor. Please check your connection or configuration.", 
         timestamp: Date.now() 
       }]);
     } finally {

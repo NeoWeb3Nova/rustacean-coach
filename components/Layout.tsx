@@ -32,6 +32,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: AppMode.LEARN, label: t.coachChat, icon: Icons.Chat },
     { id: AppMode.FEYNMAN, label: t.feynmanLab, icon: Icons.Terminal },
     { id: AppMode.ARTIFACTS, label: t.artifacts, icon: Icons.Archive },
+    { id: AppMode.SETTINGS, label: t.settings, icon: Icons.Settings },
   ];
 
   return (

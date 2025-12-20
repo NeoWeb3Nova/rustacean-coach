@@ -6,7 +6,17 @@ export enum AppMode {
   LEARN = 'LEARN',
   FEYNMAN = 'FEYNMAN',
   ARTIFACTS = 'ARTIFACTS',
-  QUIZ = 'QUIZ'
+  QUIZ = 'QUIZ',
+  SETTINGS = 'SETTINGS'
+}
+
+export type LLMProvider = 'gemini' | 'openai' | 'claude' | 'grok' | 'custom';
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  apiKey: string;
+  model: string;
+  baseUrl?: string;
 }
 
 export interface QuizQuestion {

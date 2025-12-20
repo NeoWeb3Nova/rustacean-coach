@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Language, UserProgress } from '../types';
 import { translations } from '../translations';
-import { analyzePdfForCurriculum } from '../services/gemini';
+import { analyzePdfForCurriculum } from '../services/llm';
 
 const MAX_PDF_SIZE = 50 * 1024 * 1024; // 50MB limit
 

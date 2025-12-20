@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import ChatWindow from './components/ChatWindow';
 import ArtifactsList from './components/ArtifactsList';
 import QuizView from './components/QuizView';
+import SettingsView from './components/SettingsView';
 import { AppMode, LearningArtifact, Language, UserProgress } from './types';
 import { translations } from './translations';
 
@@ -141,6 +142,8 @@ const App: React.FC = () => {
         return <ChatWindow mode="FEYNMAN" language={language} onNewArtifact={handleAddArtifact} />;
       case AppMode.ARTIFACTS:
         return <ArtifactsList artifacts={artifacts} language={language} />;
+      case AppMode.SETTINGS:
+        return <SettingsView language={language} />;
       default:
         return <Dashboard 
           language={language} 

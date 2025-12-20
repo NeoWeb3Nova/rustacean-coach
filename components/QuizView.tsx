@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { QuizQuestion, Language } from '../types';
 import { translations } from '../translations';
-import { generateQuizForChapter } from '../services/gemini';
+import { generateQuizForChapter } from '../services/llm';
 
 interface QuizViewProps {
   language: Language;
