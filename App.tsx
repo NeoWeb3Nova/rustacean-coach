@@ -8,6 +8,7 @@ import QuizView from './components/QuizView';
 import SettingsView from './components/SettingsView';
 import { AppMode, LearningArtifact, Language, UserProgress } from './types';
 import { translations } from './translations';
+import { getDirectoryHandle, syncArtifactToLocal } from './services/sync';
 
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.DASHBOARD);
@@ -58,19 +59,35 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleAddArtifact = (content: string) => {
+  const handleAddArtifact = async (content: string) => {
     const t = translations[language];
     const newArtifact: LearningArtifact = {
       id: Date.now().toString(),
-      title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString()}`,
-      date: new Date().toLocaleDateString(),
-      content: content.slice(0, 500) + (content.length > 500 ? '...' : ''),
+      title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString().replace(/\//g, '-')}`,
+      date: new Date().toLocaleDateString().replace(/\//g, '-'),
+      content: content,
       tags: ['Rust', 'Session', activeMode === AppMode.FEYNMAN ? 'Feynman' : 'Mentorship']
     };
     
+    // Internal state update
     const updated = [newArtifact, ...artifacts];
     setArtifacts(updated);
     localStorage.setItem('rust_artifacts', JSON.stringify(updated));
+    
+    // Local File Sync logic
+    const autoSync = localStorage.getItem('rust_auto_sync') === 'true';
+    if (autoSync) {
+      const handle = await getDirectoryHandle();
+      if (handle) {
+        const success = await syncArtifactToLocal(newArtifact, handle);
+        if (success) {
+          console.log("Local sync successful");
+        } else {
+          alert(language === 'zh' ? '本地文件同步失败，请在设置中重新连接文件夹。' : 'Local sync failed. Please reconnect the folder in Settings.');
+        }
+      }
+    }
+
     setActiveMode(AppMode.ARTIFACTS);
     alert(t.artifactSaved);
   };
