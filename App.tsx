@@ -4,13 +4,21 @@ import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
 import ChatWindow from './components/ChatWindow';
 import ArtifactsList from './components/ArtifactsList';
-import { AppMode, LearningArtifact } from './types';
+import { AppMode, LearningArtifact, Language } from './types';
+import { translations } from './translations';
 
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.DASHBOARD);
   const [artifacts, setArtifacts] = useState<LearningArtifact[]>([]);
+  const [language, setLanguage] = useState<Language>(() => {
+    return (localStorage.getItem('rust_mentor_lang') as Language) || 'en';
+  });
 
-  // Load from local storage on mount (Simulation of local knowledge base)
+  useEffect(() => {
+    localStorage.setItem('rust_mentor_lang', language);
+  }, [language]);
+
+  // Load from local storage on mount
   useEffect(() => {
     const saved = localStorage.getItem('rust_artifacts');
     if (saved) {
@@ -23,9 +31,10 @@ const App: React.FC = () => {
   }, []);
 
   const handleAddArtifact = (content: string) => {
+    const t = translations[language];
     const newArtifact: LearningArtifact = {
       id: Date.now().toString(),
-      title: `Learning Session: ${new Date().toLocaleDateString()}`,
+      title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString()}`,
       date: new Date().toLocaleDateString(),
       content: content.slice(0, 500) + (content.length > 500 ? '...' : ''),
       tags: ['Rust', 'Session', activeMode === AppMode.FEYNMAN ? 'Feynman' : 'Mentorship']
@@ -35,26 +44,35 @@ const App: React.FC = () => {
     setArtifacts(updated);
     localStorage.setItem('rust_artifacts', JSON.stringify(updated));
     setActiveMode(AppMode.ARTIFACTS);
-    alert("Knowledge Artifact successfully generated and saved to your local library!");
+    alert(t.artifactSaved);
+  };
+
+  const handleLanguageToggle = () => {
+    setLanguage(prev => prev === 'en' ? 'zh' : 'en');
   };
 
   const renderContent = () => {
     switch (activeMode) {
       case AppMode.DASHBOARD:
-        return <Dashboard />;
+        return <Dashboard language={language} />;
       case AppMode.LEARN:
-        return <ChatWindow mode="COACH" onNewArtifact={handleAddArtifact} />;
+        return <ChatWindow mode="COACH" language={language} onNewArtifact={handleAddArtifact} />;
       case AppMode.FEYNMAN:
-        return <ChatWindow mode="FEYNMAN" onNewArtifact={handleAddArtifact} />;
+        return <ChatWindow mode="FEYNMAN" language={language} onNewArtifact={handleAddArtifact} />;
       case AppMode.ARTIFACTS:
-        return <ArtifactsList artifacts={artifacts} />;
+        return <ArtifactsList artifacts={artifacts} language={language} />;
       default:
-        return <Dashboard />;
+        return <Dashboard language={language} />;
     }
   };
 
   return (
-    <Layout activeMode={activeMode} onModeChange={setActiveMode}>
+    <Layout 
+      activeMode={activeMode} 
+      onModeChange={setActiveMode} 
+      language={language} 
+      onLanguageToggle={handleLanguageToggle}
+    >
       {renderContent()}
     </Layout>
   );

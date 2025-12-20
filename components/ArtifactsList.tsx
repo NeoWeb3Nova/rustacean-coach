@@ -1,22 +1,26 @@
 
 import React from 'react';
-import { LearningArtifact } from '../types';
+import { LearningArtifact, Language } from '../types';
+import { translations } from '../translations';
 
 interface ArtifactsListProps {
   artifacts: LearningArtifact[];
+  language: Language;
 }
 
-const ArtifactsList: React.FC<ArtifactsListProps> = ({ artifacts }) => {
+const ArtifactsList: React.FC<ArtifactsListProps> = ({ artifacts, language }) => {
+  const t = translations[language];
+
   return (
     <div className="p-8">
       <header className="mb-8">
-        <h1 className="text-2xl font-bold text-white">Local Artifacts</h1>
-        <p className="text-[#8b949e]">Your personalized knowledge repository for Rust.</p>
+        <h1 className="text-2xl font-bold text-white">{t.localArtifacts}</h1>
+        <p className="text-[#8b949e]">{t.artifactsDesc}</p>
       </header>
 
       {artifacts.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-20 border-2 border-dashed border-[#30363d] rounded-xl text-[#8b949e]">
-          <p>No artifacts generated yet. Complete a learning session to save your progress.</p>
+          <p>{t.noArtifacts}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

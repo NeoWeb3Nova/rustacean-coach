@@ -1,4 +1,6 @@
 
+export type Language = 'en' | 'zh';
+
 export enum AppMode {
   DASHBOARD = 'DASHBOARD',
   LEARN = 'LEARN',

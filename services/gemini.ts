@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
-import { Message } from "../types";
+import { Message, Language } from "../types";
 
 const API_KEY = process.env.API_KEY || "";
 
@@ -43,8 +43,12 @@ export const generateLearningResponse = async (
   return response;
 };
 
-export const RUST_TUTOR_PROMPT = `You are a world-class Rust Programming Mentor. 
+export const getSystemPrompt = (lang: Language) => {
+  const langText = lang === 'zh' ? 'Chinese' : 'English';
+  return `You are a world-class Rust Programming Mentor. 
 Your goal is to help the user master Rust using the Feynman Technique. 
+IMPORTANT: Please respond primarily in ${langText}.
+
 Key principles:
 1. Encourage deep understanding over rote memorization.
 2. Focus on core Rust concepts: Ownership, Borrowing, Lifetimes, Safety.
@@ -52,6 +56,7 @@ Key principles:
 4. Be concise but technically accurate.
 5. Provide high-quality Rust code examples using Markdown.
 6. Always check if the user is ready for the next level or needs more practice on current topics.`;
+};
 
 export const ARTIFACT_GENERATOR_PROMPT = `Based on the learning session provided, generate a structured markdown "Knowledge Artifact". 
 Include:

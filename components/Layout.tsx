@@ -1,20 +1,25 @@
 
 import React from 'react';
-import { AppMode } from '../types';
+import { AppMode, Language } from '../types';
 import { Icons } from '../constants';
+import { translations } from '../translations';
 
 interface LayoutProps {
   children: React.ReactNode;
   activeMode: AppMode;
   onModeChange: (mode: AppMode) => void;
+  language: Language;
+  onLanguageToggle: () => void;
 }
 
-const Layout: React.FC<LayoutProps> = ({ children, activeMode, onModeChange }) => {
+const Layout: React.FC<LayoutProps> = ({ children, activeMode, onModeChange, language, onLanguageToggle }) => {
+  const t = translations[language];
+  
   const navItems = [
-    { id: AppMode.DASHBOARD, label: 'Dashboard', icon: Icons.Home },
-    { id: AppMode.LEARN, label: 'Coach Chat', icon: Icons.Chat },
-    { id: AppMode.FEYNMAN, label: 'Feynman Lab', icon: Icons.Terminal },
-    { id: AppMode.ARTIFACTS, label: 'Artifacts', icon: Icons.Archive },
+    { id: AppMode.DASHBOARD, label: t.dashboard, icon: Icons.Home },
+    { id: AppMode.LEARN, label: t.coachChat, icon: Icons.Chat },
+    { id: AppMode.FEYNMAN, label: t.feynmanLab, icon: Icons.Terminal },
+    { id: AppMode.ARTIFACTS, label: t.artifacts, icon: Icons.Archive },
   ];
 
   return (
@@ -23,7 +28,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeMode, onModeChange }) =
       <aside className="w-64 bg-[#161b22] border-r border-[#30363d] flex flex-col">
         <div className="p-6 flex items-center gap-3">
           <div className="w-8 h-8 bg-[#f85149] rounded-lg flex items-center justify-center font-bold text-white">R</div>
-          <h1 className="font-bold text-lg tracking-tight">Rust Mentor</h1>
+          <h1 className="font-bold text-lg tracking-tight">{t.appName}</h1>
         </div>
 
         <nav className="flex-1 px-4 py-4 space-y-1">
@@ -43,13 +48,23 @@ const Layout: React.FC<LayoutProps> = ({ children, activeMode, onModeChange }) =
           ))}
         </nav>
 
-        <div className="p-4 border-t border-[#30363d]">
+        <div className="p-4 space-y-4 border-t border-[#30363d]">
+          <button 
+            onClick={onLanguageToggle}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-xs font-bold text-[#8b949e] hover:text-white bg-[#21262d] rounded-md border border-[#30363d] transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+            </svg>
+            {t.switchLang}
+          </button>
+
           <div className="bg-[#0d1117] p-3 rounded-lg border border-[#30363d]">
-            <p className="text-[10px] uppercase text-[#8b949e] font-bold mb-1">Learning Status</p>
+            <p className="text-[10px] uppercase text-[#8b949e] font-bold mb-1">{t.learningStatus}</p>
             <div className="w-full bg-[#30363d] h-1.5 rounded-full overflow-hidden">
               <div className="bg-[#238636] h-full w-[45%]"></div>
             </div>
-            <p className="text-xs text-[#8b949e] mt-2">Level 4: Intermediate</p>
+            <p className="text-xs text-[#8b949e] mt-2">{t.level}</p>
           </div>
         </div>
       </aside>

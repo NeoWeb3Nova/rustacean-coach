@@ -1,15 +1,18 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Message } from '../types';
+import { Message, Language } from '../types';
 import { Icons } from '../constants';
-import { generateLearningResponse, RUST_TUTOR_PROMPT } from '../services/gemini';
+import { generateLearningResponse, getSystemPrompt } from '../services/gemini';
+import { translations } from '../translations';
 
 interface ChatWindowProps {
   mode: 'COACH' | 'FEYNMAN';
+  language: Language;
   onNewArtifact?: (content: string) => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact }) => {
+  const t = translations[language];
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -36,7 +39,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
     setIsLoading(true);
 
     try {
-      const systemInstruction = `${RUST_TUTOR_PROMPT} \nCurrently in ${mode} mode. ${
+      const basePrompt = getSystemPrompt(language);
+      const systemInstruction = `${basePrompt} \nCurrently in ${mode} mode. ${
         mode === 'FEYNMAN' ? 'Wait for the user to explain a concept and then critique it.' : 'The user will ask questions or request a curriculum.'
       }`;
       
@@ -58,7 +62,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
       console.error("Gemini Error:", err);
       setMessages(prev => [...prev, { 
         role: 'system', 
-        text: "Error connecting to mentor. Please check your connection.", 
+        text: language === 'zh' ? "连接导师失败，请检查网络。" : "Error connecting to mentor. Please check your connection.", 
         timestamp: Date.now() 
       }]);
     } finally {
@@ -69,7 +73,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
   const handleGenerateArtifact = async () => {
     if (messages.length < 2) return;
     setIsLoading(true);
-    // Artifact logic would go here
     const content = messages.map(m => `**${m.role.toUpperCase()}**: ${m.text}`).join('\n\n');
     if (onNewArtifact) onNewArtifact(content);
     setIsLoading(false);
@@ -80,17 +83,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
       <div className="p-4 border-b border-[#30363d] flex justify-between items-center bg-[#161b22]">
         <div>
           <h2 className="font-bold text-white">
-            {mode === 'COACH' ? 'Rust Coach' : 'Feynman Explanation Lab'}
+            {mode === 'COACH' ? t.coachTitle : t.feynmanTitle}
           </h2>
           <p className="text-xs text-[#8b949e]">
-            {mode === 'COACH' ? 'Interactive mentorship and roadmap guidance' : 'Explain it to me like I am five'}
+            {mode === 'COACH' ? t.coachSub : t.feynmanSub}
           </p>
         </div>
         <button 
           onClick={handleGenerateArtifact}
           className="text-xs bg-[#238636] hover:bg-[#2ea043] text-white px-3 py-1.5 rounded-md font-medium transition-colors"
         >
-          Generate Artifact
+          {t.genArtifact}
         </button>
       </div>
 
@@ -100,11 +103,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
             <div className="mb-4">
               <Icons.Terminal />
             </div>
-            <h3 className="text-lg font-medium mb-2">Initialize Session</h3>
+            <h3 className="text-lg font-medium mb-2">{t.initSession}</h3>
             <p className="text-sm max-w-sm">
-              {mode === 'COACH' 
-                ? "Start by asking for a learning path or a specific Rust question (e.g., 'Explain ownership in detail')." 
-                : "Choose a topic and explain it to the mentor. The mentor will find your knowledge gaps."}
+              {mode === 'COACH' ? t.coachInitSub : t.feynmanInitSub}
             </p>
           </div>
         )}
@@ -148,7 +149,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, onNewArtifact }) => {
                 handleSend();
               }
             }}
-            placeholder={mode === 'COACH' ? "Ask anything about Rust..." : "Explain a concept here..."}
+            placeholder={mode === 'COACH' ? t.askPlaceholder : t.explainPlaceholder}
             className="flex-1 bg-[#0d1117] border border-[#30363d] rounded-md p-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#1f6feb] min-h-[44px] max-h-32 resize-none"
           />
           <button 
