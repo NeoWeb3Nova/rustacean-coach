@@ -10,7 +10,6 @@ interface LayoutProps {
   onModeChange: (mode: AppMode) => void;
   language: Language;
   onLanguageToggle: () => void;
-  onReset: () => void;
   progressPercent: number;
   level: string;
 }
@@ -21,7 +20,6 @@ const Layout: React.FC<LayoutProps> = ({
   onModeChange, 
   language, 
   onLanguageToggle, 
-  onReset,
   progressPercent,
   level 
 }) => {
@@ -71,13 +69,6 @@ const Layout: React.FC<LayoutProps> = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
               </svg>
               {t.switchLang}
-            </button>
-
-            <button 
-              onClick={onReset}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-[10px] font-bold text-[#f85149] hover:bg-red-900/10 rounded-md transition-colors opacity-50 hover:opacity-100"
-            >
-              {language === 'zh' ? '重置应用' : 'Reset App'}
             </button>
           </div>
 

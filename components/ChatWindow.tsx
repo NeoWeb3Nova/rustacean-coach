@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Message, Language, AppMode } from '../types';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Message, Language } from '../types';
 import { Icons } from '../constants';
 import { generateLearningResponse, getSystemPrompt, textToSpeech } from '../services/llm';
 import { translations } from '../translations';
@@ -13,6 +13,90 @@ interface ChatWindowProps {
   onStartQuiz?: () => void;
 }
 
+const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, isModel }) => {
+  if (!text) return null;
+
+  const parts = text.split(/(```[\s\S]*?```)/g);
+
+  return (
+    <div className="space-y-1.5 break-words overflow-hidden text-sm">
+      {parts.map((part, i) => {
+        // Code block
+        if (part.startsWith('```')) {
+          const match = part.match(/```(\w+)?\n?([\s\S]*?)```/);
+          const lang = match?.[1] || 'text';
+          const code = match?.[2] || '';
+          return (
+            <div key={i} className="my-1.5 rounded-md overflow-hidden border border-[#30363d] bg-[#0d1117]">
+              <div className="flex items-center justify-between px-2.5 py-1 bg-[#161b22] border-b border-[#30363d]">
+                <span className="text-[10px] font-mono text-[#8b949e] uppercase tracking-wider">{lang}</span>
+                <button 
+                  onClick={() => navigator.clipboard.writeText(code)}
+                  className="text-[10px] text-[#8b949e] hover:text-white transition-colors"
+                >
+                  Copy
+                </button>
+              </div>
+              <pre className="p-2.5 overflow-x-auto text-[13px] font-mono leading-snug text-[#c9d1d9]">
+                <code>{code}</code>
+              </pre>
+            </div>
+          );
+        }
+
+        // Inline Markdown
+        const lines = part.split('\n');
+        return lines.map((line, j) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) return <div key={`${i}-${j}`} className="h-0.5" />;
+
+          // Headers
+          if (line.startsWith('### ')) {
+            return <h3 key={`${i}-${j}`} className="text-sm font-bold text-white mt-1.5 mb-0.5 flex items-center gap-1.5 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>;
+          }
+          if (line.startsWith('## ')) {
+            return <h2 key={`${i}-${j}`} className="text-base font-bold text-white mt-2 mb-1 border-b border-[#30363d] pb-0.5">{line.replace('## ', '')}</h2>;
+          }
+
+          // Lists
+          if (trimmedLine.match(/^[-*+]\s/)) {
+            return (
+              <div key={`${i}-${j}`} className="flex gap-2 pl-1 py-0.5">
+                <span className="text-[#1f6feb] mt-0.5 shrink-0">●</span>
+                <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^[-*+]\s/, ''))}</span>
+              </div>
+            );
+          }
+          if (trimmedLine.match(/^\d+\.\s/)) {
+            const num = trimmedLine.match(/^\d+/)?.[0];
+            return (
+              <div key={`${i}-${j}`} className="flex gap-2 pl-1 py-0.5">
+                <span className="text-[#8b949e] font-mono text-xs mt-0.5 shrink-0">{num}.</span>
+                <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^\d+\.\s/, ''))}</span>
+              </div>
+            );
+          }
+
+          return <p key={`${i}-${j}`} className="leading-relaxed mb-0.5 text-[#c9d1d9]">{parseInline(line)}</p>;
+        });
+      })}
+    </div>
+  );
+};
+
+function parseInline(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <strong key={i} className="text-[#58a6ff] font-semibold">{part.slice(2, -2)}</strong>;
+    }
+    if (part.startsWith('`') && part.endsWith('`')) {
+      return <code key={i} className="bg-[#21262d] px-1 rounded text-[#f85149] font-mono text-[0.9em] mx-0.5">{part.slice(1, -1)}</code>;
+    }
+    return part;
+  });
+}
+
 const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, chapterContext, onStartQuiz }) => {
   const t = translations[language];
   const [messages, setMessages] = useState<Message[]>([]);
@@ -23,6 +107,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
   const [isAutoSpeak, setIsAutoSpeak] = useState(() => localStorage.getItem('rust_auto_speak') === 'true');
   const [volume, setVolume] = useState(0);
   
+  // Resize related state
+  const [inputAreaHeight, setInputAreaHeight] = useState(130);
+  const [isResizing, setIsResizing] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -41,14 +129,42 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
     localStorage.setItem('rust_auto_speak', isAutoSpeak.toString());
   }, [isAutoSpeak]);
 
+  // Handle Resize Events
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsResizing(true);
+    e.preventDefault();
+  }, []);
+
   useEffect(() => {
-    // Re-initialize recognition if language changes while active
-    if (isListening) {
-      recognitionRef.current?.stop();
-      initRecognition();
-      recognitionRef.current?.start();
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      // Calculate height from bottom
+      const newHeight = window.innerHeight - e.clientY;
+      // Clamp values
+      if (newHeight >= 80 && newHeight <= 450) {
+        setInputAreaHeight(newHeight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'row-resize';
+    } else {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
     }
-  }, [language]);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
 
   useEffect(() => {
     return () => {
@@ -79,7 +195,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
     const dataInt16 = new Int16Array(data.buffer);
     const frameCount = dataInt16.length / numChannels;
     const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-
     for (let channel = 0; channel < numChannels; channel++) {
       const channelData = buffer.getChannelData(channel);
       for (let i = 0; i < frameCount; i++) {
@@ -91,20 +206,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
 
   const speakText = async (text: string) => {
     if (!text || text.trim().length === 0) return;
-    
-    // Resume audio context on user action if suspended
     if (playbackContextRef.current?.state === 'suspended') {
       await playbackContextRef.current.resume();
     }
-
-    const plainText = text.replace(/```[\s\S]*?```/g, '').replace(/`([^`]+)`/g, '$1');
+    const plainText = text.replace(/```[\s\S]*?```/g, '').replace(/[#*`]/g, '');
     const audioData = await textToSpeech(plainText, language);
     if (!audioData) return;
-
     if (!playbackContextRef.current) {
       playbackContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
-    
     const ctx = playbackContextRef.current;
     const buffer = await decodeAudioData(audioData, ctx, 24000, 1);
     const source = ctx.createBufferSource();
@@ -117,160 +227,98 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     const analyser = audioContext.createAnalyser();
     const source = audioContext.createMediaStreamSource(stream);
-    
     analyser.fftSize = 256;
     source.connect(analyser);
-    
     analyserRef.current = analyser;
     audioContextRef.current = audioContext;
-
-    const bufferLength = analyser.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-
     const updateVolume = () => {
       if (!analyserRef.current) return;
+      const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
       analyserRef.current.getByteFrequencyData(dataArray);
       let sum = 0;
-      for (let i = 0; i < bufferLength; i++) {
-        sum += dataArray[i];
-      }
-      const average = sum / bufferLength;
-      setVolume(average);
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      setVolume(sum / dataArray.length);
       animationFrameRef.current = requestAnimationFrame(updateVolume);
     };
-
     updateVolume();
   };
 
   const initRecognition = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return null;
-
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = language === 'zh' ? 'zh-CN' : 'en-US';
-
     recognition.onstart = () => {
       setIsListening(true);
       setIsInitializingVoice(false);
     };
-
     recognition.onresult = (event: any) => {
       let currentResult = '';
       for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          currentResult += event.results[i][0].transcript;
-        }
+        if (event.results[i].isFinal) currentResult += event.results[i][0].transcript;
       }
-      
       if (currentResult) {
         setInput(prev => {
-          // Chinese doesn't need spaces, English does.
           const needsSpace = language === 'en' && prev.length > 0 && !prev.endsWith(' ');
           return prev + (needsSpace ? ' ' : '') + currentResult;
         });
       }
     };
-
-    recognition.onerror = (event: any) => {
-      // ignore no-speech errors to prevent constant interruptions
-      if (event.error === 'no-speech') return;
-      
-      console.warn("Recognition Error:", event.error);
+    recognition.onerror = () => {
       setIsListening(false);
       setIsInitializingVoice(false);
       stopAudioMonitoring();
-      
-      if (event.error !== 'aborted') {
-        alert(`${t.voiceError}: ${event.error}`);
-      }
     };
-
     recognition.onend = () => {
-      // Auto-restart if we didn't manually stop
-      if (isListening && !isInitializingVoice) {
-        try {
-          recognition.start();
-        } catch (e) {
-          setIsListening(false);
-          stopAudioMonitoring();
-        }
-      }
+      if (isListening) recognition.start();
     };
-
     recognitionRef.current = recognition;
     return recognition;
   };
 
   const toggleVoiceInput = async () => {
-    // Ensure we have a gesture to resume audio
-    if (playbackContextRef.current?.state === 'suspended') {
-      playbackContextRef.current.resume();
-    }
-
+    if (playbackContextRef.current?.state === 'suspended') playbackContextRef.current.resume();
     if (isListening) {
       setIsListening(false);
       recognitionRef.current?.stop();
       stopAudioMonitoring();
       return;
     }
-
     setIsInitializingVoice(true);
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       micStreamRef.current = stream;
       await startAudioMonitoring(stream);
-
-      if (!recognitionRef.current) {
-        initRecognition();
-      }
-      
+      if (!recognitionRef.current) initRecognition();
       recognitionRef.current.lang = language === 'zh' ? 'zh-CN' : 'en-US';
       recognitionRef.current.start();
-      
-    } catch (err: any) {
-      console.error("Voice Access Failed", err);
+    } catch (err) {
       setIsInitializingVoice(false);
       stopAudioMonitoring();
-      alert(language === 'zh' ? `无法开启麦克风，请检查权限。` : `Mic Access Denied: ${err.message}`);
+      alert(language === 'zh' ? '请允许麦克风访问权限。' : 'Please allow mic access.');
     }
   };
 
   const handleSend = async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
-
     const userWasUsingVoice = isListening;
-    // Don't stop listening if we want continuous, but often better to stop during processing
     if (isListening) {
       setIsListening(false);
       recognitionRef.current?.stop();
       stopAudioMonitoring();
     }
-
-    const userMessage: Message = {
-      role: 'user',
-      text: trimmedInput,
-      timestamp: Date.now()
-    };
-
+    const userMessage: Message = { role: 'user', text: trimmedInput, timestamp: Date.now() };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-
     try {
-      const basePrompt = getSystemPrompt(language, chapterContext);
-      const systemInstruction = `${basePrompt} \nCurrently in ${mode} mode. ${
-        mode === 'FEYNMAN' ? 'The user will explain a concept. Critique it.' : 'Mentor the user.'
-      } ALWAYS respond in ${language === 'zh' ? 'Chinese (Simplified)' : 'English'}.`;
-      
+      const systemInstruction = getSystemPrompt(language, chapterContext);
       const response = await generateLearningResponse([...messages, userMessage], systemInstruction, true);
       let fullResponse = "";
-      
       setMessages(prev => [...prev, { role: 'model', text: '', timestamp: Date.now() }]);
-
       if (typeof response === 'object' && Symbol.asyncIterator in response) {
         for await (const chunk of (response as any)) {
           fullResponse += chunk.text;
@@ -280,26 +328,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
             return updated;
           });
         }
-      } else {
-        fullResponse = (response as any).text || "";
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1].text = fullResponse;
-          return updated;
-        });
       }
-
-      if (userWasUsingVoice || isAutoSpeak) {
-        speakText(fullResponse);
-      }
-
+      if (userWasUsingVoice || isAutoSpeak) speakText(fullResponse);
     } catch (err) {
-      console.error("LLM Error:", err);
-      setMessages(prev => [...prev, { 
-        role: 'system', 
-        text: language === 'zh' ? "通信失败，请检查设置。" : "Communication error.", 
-        timestamp: Date.now() 
-      }]);
+      setMessages(prev => [...prev, { role: 'system', text: "Error connecting to model.", timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
@@ -307,96 +339,102 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
 
   return (
     <div className="flex flex-col h-full bg-[#0d1117]">
-      <div className="p-4 border-b border-[#30363d] flex justify-between items-center bg-[#161b22] shrink-0">
+      <div className="p-2.5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22] shrink-0">
         <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="font-bold text-white text-base">
-              {mode === 'COACH' ? t.coachTitle : t.feynmanTitle}
-            </h2>
-          </div>
-          <p className="text-xs text-[#8b949e]">
-            {chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}
-          </p>
+          <h2 className="font-bold text-white text-sm">{mode === 'COACH' ? t.coachTitle : t.feynmanTitle}</h2>
+          <p className="text-[10px] text-[#8b949e] truncate max-w-xs">{chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}</p>
         </div>
-        <div className="flex gap-2 shrink-0 items-center">
+        <div className="flex gap-2 items-center">
           <button 
             onClick={() => setIsAutoSpeak(!isAutoSpeak)}
-            className={`p-2 rounded-md transition-all ${isAutoSpeak ? 'text-[#58a6ff] bg-[#1f6feb22]' : 'text-[#8b949e] hover:text-white'}`}
-            title={language === 'zh' ? '自动朗读回复' : 'Auto Speak Replies'}
+            className={`p-1.5 rounded-md transition-all ${isAutoSpeak ? 'text-[#58a6ff] bg-[#1f6feb22]' : 'text-[#8b949e] hover:text-white'}`}
           >
             <Icons.Microphone />
           </button>
-          {onStartQuiz && <button onClick={onStartQuiz} className="text-xs bg-[#1f6feb] text-white px-3 py-1.5 rounded-md font-bold">{t.takeQuiz}</button>}
+          {onStartQuiz && <button onClick={onStartQuiz} className="text-[10px] bg-[#1f6feb] text-white px-2 py-1 rounded-md font-bold hover:bg-[#388bfd] transition-colors">{t.takeQuiz}</button>}
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3.5 space-y-4 custom-scrollbar">
         {messages.map((m, idx) => (
-          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} group animate-in fade-in slide-in-from-bottom-2`}>
-            <div className={`max-w-[85%] rounded-2xl p-4 text-sm relative ${
-              m.role === 'user' ? 'bg-[#1f6feb] text-white' : 'bg-[#161b22] text-[#c9d1d9] border border-[#30363d]'
-            }`}>
-              {m.text}
-              {m.role === 'model' && (
+          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
+            {m.role === 'user' ? (
+              <div className="max-w-[80%] bg-[#1f6feb] text-white rounded-xl px-3.5 py-2 text-sm shadow-md leading-relaxed">
+                {m.text}
+              </div>
+            ) : (
+              <div className="max-w-[92%] bg-[#161b22] border border-[#30363d] text-[#c9d1d9] rounded-xl px-4 py-3.5 relative shadow-lg">
+                <MarkdownMessage text={m.text} isModel={true} />
                 <button 
                   onClick={() => speakText(m.text)}
-                  className="absolute -right-8 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-[#8b949e] hover:text-white"
+                  className="absolute -right-8 top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-[#8b949e] hover:text-white"
                 >
                   <Icons.Microphone />
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ))}
-        {isLoading && <div className="p-4 bg-[#161b22] w-12 rounded-full animate-pulse">...</div>}
+        {isLoading && <div className="p-3 bg-[#161b22] w-10 h-6 flex items-center justify-center rounded-full animate-pulse border border-[#30363d]">
+          <div className="flex gap-1">
+            <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+            <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+          </div>
+        </div>}
       </div>
 
-      <div className="p-4 border-t border-[#30363d] bg-[#0d1117] shrink-0">
-        <div className="max-w-4xl mx-auto flex flex-col gap-2">
-          {isListening && (
-            <div className="flex items-center gap-3 px-2">
-              <span className="text-[10px] font-bold text-[#58a6ff] animate-pulse">
-                {language === 'zh' ? '正在听取中文...' : 'Listening in English...'}
-              </span>
-              <div className="flex-1 bg-[#21262d] h-1.5 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-[#58a6ff] transition-all duration-75"
-                  style={{ width: `${Math.min(100, (volume / 150) * 100)}%` }}
-                ></div>
+      {/* Resizable Input Area */}
+      <div 
+        className="border-t border-[#30363d] bg-[#0d1117] shrink-0 relative flex flex-col"
+        style={{ height: `${inputAreaHeight}px` }}
+      >
+        {/* Resize Handle */}
+        <div 
+          onMouseDown={handleMouseDown}
+          className="absolute -top-1 left-0 w-full h-2 cursor-row-resize z-20 group flex items-center justify-center"
+        >
+          <div className={`h-[2px] w-12 rounded-full transition-all ${isResizing ? 'bg-[#58a6ff] w-24' : 'bg-[#30363d] group-hover:bg-[#484f58] group-hover:w-16'}`}></div>
+        </div>
+
+        <div className="flex-1 p-3 overflow-hidden flex flex-col">
+          <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col gap-2">
+            {isListening && (
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-[9px] font-bold text-[#58a6ff] animate-pulse">
+                  {language === 'zh' ? '正在识别...' : 'Listening...'}
+                </span>
+                <div className="flex-1 bg-[#21262d] h-0.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#58a6ff] transition-all" style={{ width: `${Math.min(100, (volume / 100) * 100)}%` }}></div>
+                </div>
+              </div>
+            )}
+            <div className="flex items-end gap-2 flex-1 min-h-0">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+                placeholder={isListening ? t.listening : (mode === 'COACH' ? t.askPlaceholder : t.explainPlaceholder)}
+                className="flex-1 bg-[#161b22] border border-[#30363d] rounded-lg p-3 text-sm focus:ring-1 focus:ring-[#1f6feb] outline-none h-full resize-none transition-all placeholder:text-[#484f58] custom-scrollbar"
+              />
+              <div className="flex gap-1.5 pb-0.5">
+                <button
+                  onClick={toggleVoiceInput}
+                  disabled={isInitializingVoice}
+                  className={`p-2.5 rounded-lg transition-all ${isListening ? 'bg-[#f85149] text-white scale-105' : 'bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:text-white'}`}
+                >
+                  {isInitializingVoice ? '...' : <Icons.Microphone />}
+                </button>
+                <button 
+                  onClick={handleSend}
+                  disabled={!input.trim() || isLoading}
+                  className="p-2.5 bg-[#1f6feb] text-white rounded-lg disabled:opacity-30 hover:bg-[#388bfd] transition-colors"
+                >
+                  <Icons.Send />
+                </button>
               </div>
             </div>
-          )}
-
-          <div className="flex items-end gap-3">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
-              placeholder={isListening ? t.listening : (mode === 'COACH' ? t.askPlaceholder : t.explainPlaceholder)}
-              className={`flex-1 bg-[#161b22] border border-[#30363d] rounded-xl p-3 text-sm focus:ring-1 focus:ring-[#1f6feb] outline-none min-h-[50px] max-h-48 resize-none ${isListening ? 'border-[#1f6feb] ring-1 ring-[#1f6feb]' : ''}`}
-            />
-            <div className="flex gap-2">
-              <button
-                onClick={toggleVoiceInput}
-                disabled={isInitializingVoice}
-                className={`p-3.5 rounded-xl transition-all ${isListening ? 'bg-[#f85149] text-white animate-pulse' : 'bg-[#21262d] text-[#8b949e] hover:text-white border border-[#30363d]'}`}
-              >
-                {isInitializingVoice ? '...' : <Icons.Microphone />}
-              </button>
-              <button 
-                onClick={handleSend}
-                disabled={!input.trim() || isLoading}
-                className="p-3.5 bg-[#1f6feb] hover:bg-[#388bfd] text-white rounded-xl disabled:opacity-50"
-              >
-                <Icons.Send />
-              </button>
-            </div>
           </div>
-          {isListening && volume < 5 && (
-            <p className="text-[10px] text-center text-[#8b949e]">
-              {language === 'zh' ? '未检测到声音，请检查输入设备' : 'No sound detected, check mic.'}
-            </p>
-          )}
         </div>
       </div>
     </div>

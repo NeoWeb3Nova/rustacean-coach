@@ -69,12 +69,10 @@ const App: React.FC = () => {
       tags: ['Rust', 'Session', activeMode === AppMode.FEYNMAN ? 'Feynman' : 'Mentorship']
     };
     
-    // Internal state update
     const updated = [newArtifact, ...artifacts];
     setArtifacts(updated);
     localStorage.setItem('rust_artifacts', JSON.stringify(updated));
     
-    // Local File Sync logic
     const autoSync = localStorage.getItem('rust_auto_sync') === 'true';
     if (autoSync) {
       const handle = await getDirectoryHandle();
@@ -160,16 +158,21 @@ const App: React.FC = () => {
       case AppMode.ARTIFACTS:
         return <ArtifactsList artifacts={artifacts} language={language} />;
       case AppMode.SETTINGS:
-        return <SettingsView language={language} />;
+        return <SettingsView language={language} onReset={handleReset} />;
       default:
-        return <Dashboard 
-          language={language} 
-          customTopics={customTopics} 
-          onUpdateTopics={handleUpdateTopics} 
-          progress={progress}
-          artifactsCount={artifacts.length}
-          onStartLesson={(index) => setActiveMode(AppMode.LEARN)}
-        />;
+        return (
+          <Dashboard 
+            language={language} 
+            customTopics={customTopics} 
+            onUpdateTopics={handleUpdateTopics} 
+            progress={progress}
+            artifactsCount={artifacts.length}
+            onStartLesson={(index) => {
+              setProgress(prev => ({ ...prev, currentChapterIndex: index }));
+              setActiveMode(AppMode.LEARN);
+            }}
+          />
+        );
     }
   };
 
@@ -179,7 +182,6 @@ const App: React.FC = () => {
       onModeChange={setActiveMode} 
       language={language} 
       onLanguageToggle={handleLanguageToggle}
-      onReset={handleReset}
       progressPercent={Math.round((progress.completedChapters.length / topicsCount) * 100)}
       level={progress.completedChapters.length > 5 ? 'Intermediate' : 'Beginner'}
     >

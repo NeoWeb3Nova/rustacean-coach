@@ -6,9 +6,18 @@ import { getDirectoryHandle, saveDirectoryHandle, clearDirectoryHandle } from '.
 
 interface SettingsViewProps {
   language: Language;
+  onReset: () => void;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
+const PROVIDERS: { value: LLMProvider; label: string }[] = [
+  { value: 'gemini', label: 'Google Gemini' },
+  { value: 'openai', label: 'OpenAI (ChatGPT)' },
+  { value: 'claude', label: 'Anthropic Claude' },
+  { value: 'grok', label: 'xAI Grok' },
+  { value: 'custom', label: 'Custom Endpoint' },
+];
+
+const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
   const t = translations[language];
   const [config, setConfig] = useState<LLMConfig>(() => {
     const saved = localStorage.getItem('rust_llm_config');
@@ -69,14 +78,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
     }
   };
 
-  const providers: { value: LLMProvider; label: string }[] = [
-    { value: 'gemini', label: 'Google Gemini' },
-    { value: 'openai', label: 'OpenAI (ChatGPT)' },
-    { value: 'claude', label: 'Anthropic Claude' },
-    { value: 'grok', label: 'xAI Grok' },
-    { value: 'custom', label: 'Custom Endpoint' },
-  ];
-
   return (
     <div className="p-8 max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8 pb-20">
       <header>
@@ -93,7 +94,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
             onChange={(e) => setConfig({ ...config, provider: e.target.value as LLMProvider })}
             className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none"
           >
-            {providers.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+            {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
         </div>
 
@@ -182,12 +183,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
               </div>
             )}
           </div>
-          
-          <div className="p-4 bg-blue-900/10 border border-blue-900/20 rounded-lg">
-             <p className="text-xs text-blue-300 leading-relaxed italic">
-               Note: The default storage location is the <code>/artifacts</code> directory in your project root. If automatic sync is blocked, please download files manually to that folder.
-             </p>
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="bg-[#161b22] border border-red-900/30 rounded-xl p-8 space-y-6">
+        <header>
+          <h2 className="text-xl font-bold text-red-400 mb-1">{language === 'zh' ? '危险区域' : 'Danger Zone'}</h2>
+          <p className="text-sm text-[#8b949e]">{language === 'zh' ? '管理敏感应用数据' : 'Manage sensitive app data'}</p>
+        </header>
+        
+        <div className="flex items-center justify-between p-4 bg-red-900/10 border border-red-900/20 rounded-lg">
+          <div>
+            <p className="text-sm font-bold text-white">{language === 'zh' ? '重置所有数据' : 'Reset All Data'}</p>
+            <p className="text-xs text-[#8b949e]">{language === 'zh' ? '这将清除所有进度、成果和配置。' : 'This will clear all progress, artifacts and config.'}</p>
           </div>
+          <button 
+            onClick={onReset}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold transition-all shadow-md active:scale-95"
+          >
+            {language === 'zh' ? '重置应用' : 'Reset App'}
+          </button>
         </div>
       </div>
 

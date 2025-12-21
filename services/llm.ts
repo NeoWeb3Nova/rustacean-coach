@@ -2,11 +2,10 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Message, Language, QuizQuestion, LLMConfig } from "../types";
 
-// Helper to get config from localStorage
 const getConfig = (): LLMConfig => {
   const saved = localStorage.getItem('rust_llm_config');
   if (saved) return JSON.parse(saved);
-  return { provider: 'gemini', model: 'gemini-3-pro-preview', apiKey: '' };
+  return { provider: 'gemini', model: 'gemini-3-flash-preview', apiKey: '' };
 };
 
 export const generateLearningResponse = async (
@@ -21,30 +20,37 @@ export const generateLearningResponse = async (
     parts: [{ text: m.text }]
   }));
 
+  const modelName = config.model || "gemini-3-flash-preview";
+
   if (useStreaming) {
     return await ai.models.generateContentStream({
-      model: config.model || "gemini-3-pro-preview",
+      model: modelName,
       contents,
       config: { systemInstruction, temperature: 0.7 }
     });
   }
 
   return await ai.models.generateContent({
-    model: config.model || "gemini-3-pro-preview",
+    model: modelName,
     contents,
     config: { systemInstruction, temperature: 0.7 }
   });
 };
 
-/**
- * Transforms text into audio bytes using gemini-2.5-flash-preview-tts
- */
 export const textToSpeech = async (text: string, language: Language): Promise<Uint8Array | null> => {
   try {
+    // Check if key selection is needed for high-tier preview models
+    // @ts-ignore
+    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+       // @ts-ignore
+       await window.aistudio.openSelectKey();
+       // Procedural assumption as per guidelines: proceed after trigger
+    }
+
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = language === 'zh' 
-      ? `用自然、清晰的中文（中国大陆口音）朗读以下 Rust 教学内容，保持专业且亲切的语调：${text}`
-      : `Read this Rust programming insight naturally and clearly: ${text}`;
+      ? `朗读以下 Rust 教学内容：${text}`
+      : `Read this Rust content: ${text}`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -59,7 +65,9 @@ export const textToSpeech = async (text: string, language: Language): Promise<Ui
       },
     });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+    const base64Audio = part?.inlineData?.data;
+
     if (base64Audio) {
       const binaryString = atob(base64Audio);
       const bytes = new Uint8Array(binaryString.length);
@@ -69,8 +77,15 @@ export const textToSpeech = async (text: string, language: Language): Promise<Ui
       return bytes;
     }
     return null;
-  } catch (error) {
+  } catch (error: any) {
     console.error("TTS Error:", error);
+    // Handle the "entity not found" error by prompting for key selection
+    if (error?.message?.includes("Requested entity was not found") || error?.message?.includes("Rpc failed")) {
+      // @ts-ignore
+      if (window.aistudio) {
+        window.aistudio.openSelectKey();
+      }
+    }
     return null;
   }
 };
@@ -79,13 +94,10 @@ export const analyzePdfForCurriculum = async (base64Pdf: string, language: Langu
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langText = language === 'zh' ? 'Chinese' : 'English';
   
-  const prompt = `Analyze this PDF document and extract its main chapters or learning sections to create a structured Rust programming curriculum. 
-Return a JSON array of strings, where each string is a chapter title. 
-The output should be primarily in ${langText}.
-Ensure the chapters follow the logical order of the document.`;
+  const prompt = `Analyze this PDF document and extract its main chapters for a Rust curriculum. Return JSON array of strings in ${langText}.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
+    model: 'gemini-3-flash-preview',
     contents: [
       {
         parts: [
@@ -109,13 +121,10 @@ Ensure the chapters follow the logical order of the document.`;
 export const generateQuizForChapter = async (chapterTitle: string, language: Language) => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langText = language === 'zh' ? 'Chinese' : 'English';
-  const prompt = `Generate a 3-question multiple choice quiz for the Rust programming topic: "${chapterTitle}". 
-For each question, provide 4 options, the correct answer index (0-3), and a brief explanation.
-Language: ${langText}.
-Return ONLY JSON.`;
+  const prompt = `Generate a 3-question quiz for "${chapterTitle}" in ${langText}. Return JSON.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
+    model: 'gemini-3-flash-preview',
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
@@ -138,20 +147,21 @@ Return ONLY JSON.`;
 };
 
 export const getSystemPrompt = (lang: Language, contextChapter?: string) => {
-  const langText = lang === 'zh' ? 'Chinese' : 'English';
+  const langText = lang === 'zh' ? 'Chinese (Simplified)' : 'English';
   const chapterFocus = contextChapter 
-    ? `\nCURRENT CHAPTER FOCUS: "${contextChapter}". Keep explanations and exercises strictly related to this topic.`
+    ? `\nCURRENT CHAPTER FOCUS: "${contextChapter}".`
     : "";
 
   return `You are a world-class Rust Programming Mentor. 
-Your goal is to help the user master Rust using the Feynman Technique. 
-IMPORTANT: Please respond primarily in ${langText}.${chapterFocus}
 
-Key principles:
-1. Encourage deep understanding over rote memorization.
-2. Focus on core Rust concepts: Ownership, Borrowing, Lifetimes, Safety.
-3. If the user is explaining a concept (Feynman Mode), listen carefully, then identify gaps or misunderstandings.
-4. Be concise but technically accurate.
-5. Provide high-quality Rust code examples using Markdown.
-6. Always check if the user is ready for the next level or needs more practice on current topics.`;
+LANGUAGE RULE:
+- ALWAYS explain concepts in the user's requested language: ${langText}.
+- While you can keep technical keywords in English (e.g., "Ownership", "Borrowing", "Trait"), your main explanation and logic MUST be in ${langText}.
+- DO NOT tell the user you only communicate in English. You are multilingual.
+
+PEDAGOGY:
+- Use the Feynman Technique: explain complex things simply.
+- If in FEYNMAN mode, critique the user's explanation.
+- Use structured Markdown with clear headers (###), bold text (**), and code blocks (\`\`\`rust).
+${chapterFocus}`;
 };
