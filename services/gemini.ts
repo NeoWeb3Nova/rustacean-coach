@@ -1,20 +1,17 @@
 
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Message, Language, QuizQuestion } from "../types";
 
-const API_KEY = process.env.API_KEY || "";
-
-export const getGeminiModel = () => {
-  const ai = new GoogleGenAI({ apiKey: API_KEY });
-  return ai;
-};
-
+/**
+ * Generates a learning response using Gemini.
+ * Adheres to guideline: Create a new instance right before making an API call.
+ */
 export const generateLearningResponse = async (
   messages: Message[], 
   systemInstruction: string,
   useStreaming: boolean = false
 ) => {
-  const ai = getGeminiModel();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const contents = messages.map(m => ({
     role: m.role === 'model' ? 'model' : 'user',
     parts: [{ text: m.text }]
@@ -43,8 +40,11 @@ export const generateLearningResponse = async (
   return response;
 };
 
+/**
+ * Analyzes a PDF to extract a curriculum.
+ */
 export const analyzePdfForCurriculum = async (base64Pdf: string, language: Language) => {
-  const ai = getGeminiModel();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langText = language === 'zh' ? 'Chinese' : 'English';
   
   const prompt = `Analyze this PDF document and extract its main chapters or learning sections to create a structured Rust programming curriculum. 
@@ -81,8 +81,11 @@ Ensure the chapters follow the logical order of the document.`;
   return JSON.parse(response.text || "[]") as string[];
 };
 
+/**
+ * Generates a quiz for a specific chapter.
+ */
 export const generateQuizForChapter = async (chapterTitle: string, language: Language) => {
-  const ai = getGeminiModel();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langText = language === 'zh' ? 'Chinese' : 'English';
 
   const prompt = `Generate a 3-question multiple choice quiz for the Rust programming topic: "${chapterTitle}". 
@@ -114,6 +117,9 @@ Return ONLY JSON.`;
   return JSON.parse(response.text || "[]") as QuizQuestion[];
 };
 
+/**
+ * Construct system prompts for the mentor.
+ */
 export const getSystemPrompt = (lang: Language, contextChapter?: string) => {
   const langText = lang === 'zh' ? 'Chinese' : 'English';
   const chapterFocus = contextChapter 

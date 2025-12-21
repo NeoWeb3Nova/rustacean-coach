@@ -18,11 +18,16 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
   const [isSaved, setIsSaved] = useState(false);
   const [syncHandle, setSyncHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [autoSync, setAutoSync] = useState(() => localStorage.getItem('rust_auto_sync') === 'true');
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadHandle = async () => {
-      const handle = await getDirectoryHandle();
-      setSyncHandle(handle);
+      try {
+        const handle = await getDirectoryHandle();
+        setSyncHandle(handle);
+      } catch (e) {
+        console.warn("Failed to retrieve directory handle from IndexedDB");
+      }
     };
     loadHandle();
   }, []);
@@ -35,13 +40,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
   };
 
   const handleFolderSelect = async () => {
+    setSyncError(null);
     try {
       // @ts-ignore
       const handle = await window.showDirectoryPicker();
       await saveDirectoryHandle(handle);
       setSyncHandle(handle);
-    } catch (e) {
-      console.error("Folder picker cancelled or failed", e);
+    } catch (e: any) {
+      console.error("Folder picker error", e);
+      if (e.name === 'SecurityError') {
+        setSyncError(t.syncError);
+      }
     }
   };
 
@@ -69,7 +78,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
   ];
 
   return (
-    <div className="p-8 max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+    <div className="p-8 max-w-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8 pb-20">
       <header>
         <h1 className="text-2xl font-bold text-white mb-2">{t.llmConfigTitle}</h1>
         <p className="text-[#8b949e]">{t.settings}</p>
@@ -123,19 +132,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
             />
           </div>
         )}
-
-        {config.provider === 'custom' && (
-          <div>
-            <label className="block text-sm font-medium text-[#8b949e] mb-2">{t.baseUrl}</label>
-            <input
-              type="text"
-              value={config.baseUrl || ''}
-              placeholder="https://api.yourprovider.com/v1"
-              onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-              className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none font-mono text-sm"
-            />
-          </div>
-        )}
       </div>
 
       {/* Local Sync Configuration */}
@@ -171,13 +167,26 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language }) => {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={handleFolderSelect}
-                className="w-full py-2 border border-dashed border-[#484f58] text-[#8b949e] rounded-md text-sm hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all"
-              >
-                + {t.selectFolder}
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={handleFolderSelect}
+                  className="w-full py-2 border border-dashed border-[#484f58] text-[#8b949e] rounded-md text-sm hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all"
+                >
+                  + {t.selectFolder}
+                </button>
+                {syncError && (
+                  <p className="text-xs text-red-400 leading-relaxed bg-red-900/10 p-3 rounded border border-red-900/20">
+                    {syncError}
+                  </p>
+                )}
+              </div>
             )}
+          </div>
+          
+          <div className="p-4 bg-blue-900/10 border border-blue-900/20 rounded-lg">
+             <p className="text-xs text-blue-300 leading-relaxed italic">
+               Note: The default storage location is the <code>/artifacts</code> directory in your project root. If automatic sync is blocked, please download files manually to that folder.
+             </p>
           </div>
         </div>
       </div>

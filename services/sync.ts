@@ -5,12 +5,14 @@ const DB_NAME = 'RustMentorSyncDB';
 const STORE_NAME = 'Handles';
 const HANDLE_KEY = 'syncFolderHandle';
 
-// Open IndexedDB to store/retrieve directory handles
 const openDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => {
-      request.result.createObjectStore(STORE_NAME);
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -19,54 +21,70 @@ const openDB = (): Promise<IDBDatabase> => {
 
 export const saveDirectoryHandle = async (handle: FileSystemDirectoryHandle) => {
   const db = await openDB();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  tx.objectStore(STORE_NAME).put(handle, HANDLE_KEY);
-  return new Promise((resolve) => {
-    tx.oncomplete = () => resolve(true);
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put(handle, HANDLE_KEY);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
   });
 };
 
 export const getDirectoryHandle = async (): Promise<FileSystemDirectoryHandle | null> => {
   const db = await openDB();
-  const tx = db.transaction(STORE_NAME, 'readonly');
-  const request = tx.objectStore(STORE_NAME).get(HANDLE_KEY);
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(HANDLE_KEY);
     request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => resolve(null);
+    request.onerror = () => resolve(null); // Return null instead of rejecting
   });
 };
 
 export const clearDirectoryHandle = async () => {
   const db = await openDB();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  tx.objectStore(STORE_NAME).delete(HANDLE_KEY);
+  const transaction = db.transaction(STORE_NAME, 'readwrite');
+  transaction.objectStore(STORE_NAME).delete(HANDLE_KEY);
 };
 
-export const syncArtifactToLocal = async (artifact: LearningArtifact, handle: FileSystemDirectoryHandle) => {
+export const syncArtifactToLocal = async (artifact: LearningArtifact, handle: FileSystemDirectoryHandle): Promise<boolean> => {
   try {
-    // Request permission if not granted
     // @ts-ignore
-    if ((await handle.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+    const permissionStatus = await handle.queryPermission({ mode: 'readwrite' });
+    if (permissionStatus !== 'granted') {
       // @ts-ignore
-      if ((await handle.requestPermission({ mode: 'readwrite' })) !== 'granted') {
-        throw new Error("Permission denied");
-      }
+      const requestStatus = await handle.requestPermission({ mode: 'readwrite' });
+      if (requestStatus !== 'granted') return false;
     }
 
-    const safeTitle = artifact.title.replace(/[<>:"/\\|?*]/g, '_');
+    const safeTitle = artifact.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const fileName = `${artifact.date}-${safeTitle}.md`;
-    
     const fileHandle = await handle.getFileHandle(fileName, { create: true });
+    
     // @ts-ignore
     const writable = await fileHandle.createWritable();
-    
-    const content = `# ${artifact.title}\n\nDate: ${artifact.date}\nTags: ${artifact.tags.join(', ')}\n\n---\n\n${artifact.content}`;
-    
-    await writable.write(content);
+    await writable.write(artifact.content);
     await writable.close();
     return true;
   } catch (error) {
-    console.error("Local sync error:", error);
+    console.error("Sync error:", error);
     return false;
   }
+};
+
+/**
+ * Fallback to manual download if the File System Access API is blocked.
+ */
+export const triggerDownload = (artifact: LearningArtifact) => {
+  const safeTitle = artifact.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const fileName = `${artifact.date}-${safeTitle}.md`;
+  const blob = new Blob([artifact.content], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };

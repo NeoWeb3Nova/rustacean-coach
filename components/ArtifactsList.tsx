@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { LearningArtifact, Language } from '../types';
 import { translations } from '../translations';
 import { Icons } from '../constants';
+import { triggerDownload } from '../services/sync';
 
 interface ArtifactsListProps {
   artifacts: LearningArtifact[];
@@ -20,8 +21,11 @@ const ArtifactsList: React.FC<ArtifactsListProps> = ({ artifacts, language }) =>
     setTimeout(() => setCopyStatus(null), 2000);
   };
 
+  const handleDownload = (artifact: LearningArtifact) => {
+    triggerDownload(artifact);
+  };
+
   const renderContent = (content: string) => {
-    // Simple logic to highlight common markdown-like structures in our generated artifacts
     return content.split('\n').map((line, i) => {
       if (line.startsWith('#')) return <h4 key={i} className="text-xl font-bold text-white mt-6 mb-3">{line.replace(/^#+\s/, '')}</h4>;
       if (line.startsWith('**') && line.endsWith('**')) return <p key={i} className="font-bold text-[#58a6ff] mt-4 mb-2">{line.replace(/\*\*/g, '')}</p>;
@@ -110,6 +114,16 @@ const ArtifactsList: React.FC<ArtifactsListProps> = ({ artifacts, language }) =>
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => handleDownload(selectedArtifact)}
+                  className="p-2 text-[#8b949e] hover:text-[#58a6ff] hover:bg-[#21262d] rounded-md transition-all flex items-center gap-2"
+                  title={t.downloadMd}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  <span className="text-xs font-bold hidden md:block">{t.downloadMd}</span>
+                </button>
                 <button 
                   onClick={() => handleCopy(selectedArtifact.content)}
                   className="p-2 text-[#8b949e] hover:text-white hover:bg-[#21262d] rounded-md transition-all relative group"

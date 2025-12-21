@@ -1,5 +1,5 @@
 {
-  "name": "Copy of Rust Mentor: Feynman Learning Lab",
+  "name": "Rust Mentor: Feynman Learning Lab",
   "description": "An AI-powered learning companion for mastering the Rust programming language, inspired by the Feynman technique and Chen Ran's iterative learning methodology.",
   "requestFramePermissions": [
     "microphone"

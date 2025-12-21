@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { Message, Language, QuizQuestion, LLMConfig } from "../types";
 
 // Helper to get config from localStorage
@@ -15,73 +15,64 @@ export const generateLearningResponse = async (
   useStreaming: boolean = false
 ) => {
   const config = getConfig();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const contents = messages.map(m => ({
+    role: m.role === 'model' ? 'model' : 'user',
+    parts: [{ text: m.text }]
+  }));
 
-  if (config.provider === 'gemini') {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const contents = messages.map(m => ({
-      role: m.role === 'model' ? 'model' : 'user',
-      parts: [{ text: m.text }]
-    }));
-
-    if (useStreaming) {
-      return await ai.models.generateContentStream({
-        model: config.model || "gemini-3-pro-preview",
-        contents,
-        config: { systemInstruction, temperature: 0.7 }
-      });
-    }
-
-    return await ai.models.generateContent({
+  if (useStreaming) {
+    return await ai.models.generateContentStream({
       model: config.model || "gemini-3-pro-preview",
       contents,
       config: { systemInstruction, temperature: 0.7 }
     });
-  } else {
-    // Non-Gemini implementation using standard Fetch for OpenAI/Claude/etc
-    const response = await fetchLLM(messages, systemInstruction, config);
-    return { text: response };
   }
+
+  return await ai.models.generateContent({
+    model: config.model || "gemini-3-pro-preview",
+    contents,
+    config: { systemInstruction, temperature: 0.7 }
+  });
 };
 
-const fetchLLM = async (messages: Message[], system: string, config: LLMConfig) => {
-  let url = '';
-  let headers: Record<string, string> = { "Content-Type": "application/json" };
-  let body: any = {};
+/**
+ * Transforms text into audio bytes using gemini-2.5-flash-preview-tts
+ */
+export const textToSpeech = async (text: string, language: Language): Promise<Uint8Array | null> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = language === 'zh' 
+      ? `用自然、清晰的中文（中国大陆口音）朗读以下 Rust 教学内容，保持专业且亲切的语调：${text}`
+      : `Read this Rust programming insight naturally and clearly: ${text}`;
 
-  const fullMessages = [
-    { role: 'system', content: system },
-    ...messages.map(m => ({ role: m.role === 'model' ? 'assistant' : 'user', content: m.text }))
-  ];
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: prompt }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: 'Zephyr' }, 
+          },
+        },
+      },
+    });
 
-  switch (config.provider) {
-    case 'openai':
-      url = 'https://api.openai.com/v1/chat/completions';
-      headers["Authorization"] = `Bearer ${config.apiKey}`;
-      body = { model: config.model, messages: fullMessages };
-      break;
-    case 'claude':
-      url = 'https://api.anthropic.com/v1/messages';
-      headers["x-api-key"] = config.apiKey;
-      headers["anthropic-version"] = "2023-06-01";
-      body = { model: config.model, system, messages: fullMessages.filter(m => m.role !== 'system') };
-      break;
-    case 'grok':
-      url = 'https://api.x.ai/v1/chat/completions';
-      headers["Authorization"] = `Bearer ${config.apiKey}`;
-      body = { model: config.model, messages: fullMessages };
-      break;
-    case 'custom':
-      url = config.baseUrl || '';
-      headers["Authorization"] = `Bearer ${config.apiKey}`;
-      body = { model: config.model, messages: fullMessages };
-      break;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+    if (base64Audio) {
+      const binaryString = atob(base64Audio);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes;
+    }
+    return null;
+  } catch (error) {
+    console.error("TTS Error:", error);
+    return null;
   }
-
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-  const data = await res.json();
-  
-  if (config.provider === 'claude') return data.content[0].text;
-  return data.choices[0].message.content;
 };
 
 export const analyzePdfForCurriculum = async (base64Pdf: string, language: Language) => {
@@ -116,42 +107,34 @@ Ensure the chapters follow the logical order of the document.`;
 };
 
 export const generateQuizForChapter = async (chapterTitle: string, language: Language) => {
-  const config = getConfig();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langText = language === 'zh' ? 'Chinese' : 'English';
   const prompt = `Generate a 3-question multiple choice quiz for the Rust programming topic: "${chapterTitle}". 
 For each question, provide 4 options, the correct answer index (0-3), and a brief explanation.
 Language: ${langText}.
 Return ONLY JSON.`;
 
-  if (config.provider === 'gemini') {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: config.model || 'gemini-3-pro-preview',
-      contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              question: { type: Type.STRING },
-              options: { type: Type.ARRAY, items: { type: Type.STRING } },
-              correctAnswerIndex: { type: Type.NUMBER },
-              explanation: { type: Type.STRING }
-            },
-            required: ["question", "options", "correctAnswerIndex", "explanation"]
-          }
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            question: { type: Type.STRING },
+            options: { type: Type.ARRAY, items: { type: Type.STRING } },
+            correctAnswerIndex: { type: Type.NUMBER },
+            explanation: { type: Type.STRING }
+          },
+          required: ["question", "options", "correctAnswerIndex", "explanation"]
         }
       }
-    });
-    return JSON.parse(response.text || "[]") as QuizQuestion[];
-  } else {
-    const text = await fetchLLM([{ role: 'user', text: prompt, timestamp: Date.now() }], "You are a quiz generator.", config);
-    // Extract JSON from text if provider doesn't support structured output schema
-    const match = text.match(/\[.*\]/s);
-    return JSON.parse(match ? match[0] : "[]") as QuizQuestion[];
-  }
+    }
+  });
+  return JSON.parse(response.text || "[]") as QuizQuestion[];
 };
 
 export const getSystemPrompt = (lang: Language, contextChapter?: string) => {
