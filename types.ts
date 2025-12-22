@@ -10,20 +10,13 @@ export enum AppMode {
   SETTINGS = 'SETTINGS'
 }
 
+// Added missing LLMProvider and LLMConfig types used in Settings and LLM services
 export type LLMProvider = 'gemini' | 'openai' | 'claude' | 'grok' | 'custom';
 
 export interface LLMConfig {
   provider: LLMProvider;
-  apiKey: string;
   model: string;
-  baseUrl?: string;
-}
-
-export interface QuizQuestion {
-  question: string;
-  options: string[];
-  correctAnswerIndex: number;
-  explanation: string;
+  apiKey: string;
 }
 
 export interface Message {
@@ -42,7 +35,14 @@ export interface LearningArtifact {
 
 export interface UserProgress {
   currentLevel: string;
-  completedChapters: number[]; // Array of indices
+  completedChapters: number[];
   currentChapterIndex: number;
   totalSessions: number;
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswerIndex: number;
+  explanation: string;
 }

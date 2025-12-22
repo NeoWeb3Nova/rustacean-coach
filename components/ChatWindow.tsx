@@ -8,6 +8,8 @@ import { translations } from '../translations';
 interface ChatWindowProps {
   mode: 'COACH' | 'FEYNMAN';
   language: Language;
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   onNewArtifact?: (content: string) => void;
   chapterContext?: string;
   onStartQuiz?: () => void;
@@ -19,50 +21,46 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
   const parts = text.split(/(```[\s\S]*?```)/g);
 
   return (
-    <div className="space-y-1.5 break-words overflow-hidden text-sm">
+    <div className="space-y-2 break-words overflow-hidden text-sm">
       {parts.map((part, i) => {
-        // Code block
         if (part.startsWith('```')) {
           const match = part.match(/```(\w+)?\n?([\s\S]*?)```/);
           const lang = match?.[1] || 'text';
           const code = match?.[2] || '';
           return (
-            <div key={i} className="my-1.5 rounded-md overflow-hidden border border-[#30363d] bg-[#0d1117]">
-              <div className="flex items-center justify-between px-2.5 py-1 bg-[#161b22] border-b border-[#30363d]">
+            <div key={i} className="my-2 rounded-md overflow-hidden border border-[#30363d] bg-[#0d1117]">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-[#30363d]">
                 <span className="text-[10px] font-mono text-[#8b949e] uppercase tracking-wider">{lang}</span>
                 <button 
                   onClick={() => navigator.clipboard.writeText(code)}
-                  className="text-[10px] text-[#8b949e] hover:text-white transition-colors"
+                  className="text-[10px] text-[#8b949e] hover:text-white transition-colors flex items-center gap-1"
                 >
-                  Copy
+                  <Icons.Copy /> Copy
                 </button>
               </div>
-              <pre className="p-2.5 overflow-x-auto text-[13px] font-mono leading-snug text-[#c9d1d9]">
+              <pre className="p-3 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9]">
                 <code>{code}</code>
               </pre>
             </div>
           );
         }
 
-        // Inline Markdown
         const lines = part.split('\n');
         return lines.map((line, j) => {
           const trimmedLine = line.trim();
-          if (!trimmedLine) return <div key={`${i}-${j}`} className="h-0.5" />;
+          if (!trimmedLine) return <div key={`${i}-${j}`} className="h-1" />;
 
-          // Headers
           if (line.startsWith('### ')) {
-            return <h3 key={`${i}-${j}`} className="text-sm font-bold text-white mt-1.5 mb-0.5 flex items-center gap-1.5 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>;
+            return <h3 key={`${i}-${j}`} className="text-sm font-bold text-white mt-3 mb-1 flex items-center gap-2 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>;
           }
           if (line.startsWith('## ')) {
-            return <h2 key={`${i}-${j}`} className="text-base font-bold text-white mt-2 mb-1 border-b border-[#30363d] pb-0.5">{line.replace('## ', '')}</h2>;
+            return <h2 key={`${i}-${j}`} className="text-base font-bold text-white mt-4 mb-2 border-b border-[#30363d] pb-1">{line.replace('## ', '')}</h2>;
           }
 
-          // Lists
           if (trimmedLine.match(/^[-*+]\s/)) {
             return (
-              <div key={`${i}-${j}`} className="flex gap-2 pl-1 py-0.5">
-                <span className="text-[#1f6feb] mt-0.5 shrink-0">●</span>
+              <div key={`${i}-${j}`} className="flex gap-2 pl-2 py-0.5">
+                <span className="text-[#1f6feb] mt-1 shrink-0">●</span>
                 <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^[-*+]\s/, ''))}</span>
               </div>
             );
@@ -70,14 +68,14 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
           if (trimmedLine.match(/^\d+\.\s/)) {
             const num = trimmedLine.match(/^\d+/)?.[0];
             return (
-              <div key={`${i}-${j}`} className="flex gap-2 pl-1 py-0.5">
-                <span className="text-[#8b949e] font-mono text-xs mt-0.5 shrink-0">{num}.</span>
+              <div key={`${i}-${j}`} className="flex gap-2 pl-2 py-0.5">
+                <span className="text-[#8b949e] font-mono text-xs mt-1 shrink-0">{num}.</span>
                 <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^\d+\.\s/, ''))}</span>
               </div>
             );
           }
 
-          return <p key={`${i}-${j}`} className="leading-relaxed mb-0.5 text-[#c9d1d9]">{parseInline(line)}</p>;
+          return <p key={`${i}-${j}`} className="leading-relaxed mb-1 text-[#c9d1d9]">{parseInline(line)}</p>;
         });
       })}
     </div>
@@ -91,15 +89,22 @@ function parseInline(text: string) {
       return <strong key={i} className="text-[#58a6ff] font-semibold">{part.slice(2, -2)}</strong>;
     }
     if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={i} className="bg-[#21262d] px-1 rounded text-[#f85149] font-mono text-[0.9em] mx-0.5">{part.slice(1, -1)}</code>;
+      return <code key={i} className="bg-[#21262d] px-1.5 rounded text-[#f85149] font-mono text-[0.9em] mx-0.5">{part.slice(1, -1)}</code>;
     }
     return part;
   });
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, chapterContext, onStartQuiz }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({ 
+  mode, 
+  language, 
+  messages, 
+  setMessages, 
+  onNewArtifact, 
+  chapterContext, 
+  onStartQuiz 
+}) => {
   const t = translations[language];
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGeneratingArtifact, setIsGeneratingArtifact] = useState(false);
@@ -108,7 +113,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
   const [isAutoSpeak, setIsAutoSpeak] = useState(() => localStorage.getItem('rust_auto_speak') === 'true');
   const [volume, setVolume] = useState(0);
   
-  // Resize related state
   const [inputAreaHeight, setInputAreaHeight] = useState(130);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -130,7 +134,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
     localStorage.setItem('rust_auto_speak', isAutoSpeak.toString());
   }, [isAutoSpeak]);
 
-  // Handle Resize Events
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     setIsResizing(true);
     e.preventDefault();
@@ -145,9 +148,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
       }
     };
 
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
+    const handleMouseUp = () => setIsResizing(false);
 
     if (isResizing) {
       window.addEventListener('mousemove', handleMouseMove);
@@ -205,21 +206,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
 
   const speakText = async (text: string) => {
     if (!text || text.trim().length === 0) return;
-    if (playbackContextRef.current?.state === 'suspended') {
-      await playbackContextRef.current.resume();
+    try {
+      if (!playbackContextRef.current) {
+        playbackContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      const ctx = playbackContextRef.current;
+      if (ctx.state === 'suspended') await ctx.resume();
+      
+      const plainText = text.replace(/```[\s\S]*?```/g, '').replace(/[#*`]/g, '');
+      const audioData = await textToSpeech(plainText, language);
+      if (!audioData) return;
+      
+      const buffer = await decodeAudioData(audioData, ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start();
+    } catch (e) {
+      console.warn("Speech playback error:", e);
     }
-    const plainText = text.replace(/```[\s\S]*?```/g, '').replace(/[#*`]/g, '');
-    const audioData = await textToSpeech(plainText, language);
-    if (!audioData) return;
-    if (!playbackContextRef.current) {
-      playbackContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    const ctx = playbackContextRef.current;
-    const buffer = await decodeAudioData(audioData, ctx, 24000, 1);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    source.start();
   };
 
   const startAudioMonitoring = async (stream: MediaStream) => {
@@ -278,7 +283,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
   };
 
   const toggleVoiceInput = async () => {
-    if (playbackContextRef.current?.state === 'suspended') playbackContextRef.current.resume();
     if (isListening) {
       setIsListening(false);
       recognitionRef.current?.stop();
@@ -303,21 +307,25 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
   const handleSend = async () => {
     const trimmedInput = input.trim();
     if (!trimmedInput || isLoading) return;
-    const userWasUsingVoice = isListening;
+    
     if (isListening) {
       setIsListening(false);
       recognitionRef.current?.stop();
       stopAudioMonitoring();
     }
+
     const userMessage: Message = { role: 'user', text: trimmedInput, timestamp: Date.now() };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
+
     try {
       const systemInstruction = getSystemPrompt(language, chapterContext);
       const response = await generateLearningResponse([...messages, userMessage], systemInstruction, true);
       let fullResponse = "";
+      
       setMessages(prev => [...prev, { role: 'model', text: '', timestamp: Date.now() }]);
+      
       if (typeof response === 'object' && Symbol.asyncIterator in response) {
         for await (const chunk of (response as any)) {
           fullResponse += chunk.text;
@@ -328,9 +336,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
           });
         }
       }
-      if (userWasUsingVoice || isAutoSpeak) speakText(fullResponse);
+      if (isAutoSpeak) speakText(fullResponse);
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'system', text: "Error connecting to model.", timestamp: Date.now() }]);
+      setMessages(prev => [...prev, { role: 'system', text: "Connection error.", timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
@@ -346,38 +354,34 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
       }
     } catch (error) {
       console.error("Artifact generation error:", error);
-      alert(language === 'zh' ? '生成成果失败，请稍后重试。' : 'Failed to generate artifact. Please try again.');
+      alert(language === 'zh' ? '生成失败。' : 'Failed.');
     } finally {
       setIsGeneratingArtifact(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#0d1117]">
-      <div className="p-2.5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22] shrink-0">
-        <div className="flex-1">
+    <div className="flex flex-col h-full bg-[#0d1117] text-[#c9d1d9]">
+      <div className="p-3 border-b border-[#30363d] flex justify-between items-center bg-[#161b22] shrink-0">
+        <div className="flex-1 overflow-hidden">
           <h2 className="font-bold text-white text-sm">{mode === 'COACH' ? t.coachTitle : t.feynmanTitle}</h2>
-          <p className="text-[10px] text-[#8b949e] truncate max-w-xs">{chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}</p>
+          <p className="text-[10px] text-[#8b949e] truncate">{chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}</p>
         </div>
         <div className="flex gap-2 items-center">
           {onNewArtifact && (
             <button 
               onClick={handleArtifactGeneration}
               disabled={messages.length < 2 || isGeneratingArtifact}
-              className="text-[10px] bg-[#238636] hover:bg-[#2ea043] disabled:opacity-30 text-white px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1.5"
+              className="text-[10px] bg-[#238636] hover:bg-[#2ea043] disabled:opacity-30 text-white px-2.5 py-1.5 rounded-md font-bold transition-all flex items-center gap-2"
             >
-              {isGeneratingArtifact ? (
-                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Icons.Archive />
-              )}
+              {isGeneratingArtifact ? <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Icons.Archive />}
               {t.genArtifact}
             </button>
           )}
           {onStartQuiz && (
             <button 
               onClick={onStartQuiz} 
-              className="text-[10px] bg-[#1f6feb] text-white px-2 py-1 rounded-md font-bold hover:bg-[#388bfd] transition-colors"
+              className="text-[10px] bg-[#1f6feb] text-white px-2.5 py-1.5 rounded-md font-bold hover:bg-[#388bfd] transition-colors"
             >
               {t.takeQuiz}
             </button>
@@ -385,19 +389,27 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-3.5 space-y-4 custom-scrollbar">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
+        {messages.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center opacity-40 text-center p-8">
+            <div className="w-16 h-16 bg-[#21262d] rounded-full flex items-center justify-center mb-4">
+              <Icons.Chat />
+            </div>
+            <p className="text-sm font-medium">{mode === 'COACH' ? t.coachInitSub : t.feynmanInitSub}</p>
+          </div>
+        )}
         {messages.map((m, idx) => (
-          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
+          <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} group animate-in fade-in slide-in-from-bottom-2`}>
             {m.role === 'user' ? (
-              <div className="max-w-[80%] bg-[#1f6feb] text-white rounded-xl px-3.5 py-2 text-sm shadow-md leading-relaxed">
+              <div className="max-w-[85%] bg-[#1f6feb] text-white rounded-2xl px-4 py-2 text-sm shadow-md leading-relaxed">
                 {m.text}
               </div>
             ) : (
-              <div className="max-w-[92%] bg-[#161b22] border border-[#30363d] text-[#c9d1d9] rounded-xl px-4 py-3.5 relative shadow-lg">
+              <div className="max-w-[95%] bg-[#161b22] border border-[#30363d] text-[#c9d1d9] rounded-2xl px-5 py-4 relative shadow-lg">
                 <MarkdownMessage text={m.text} isModel={true} />
                 <button 
                   onClick={() => speakText(m.text)}
-                  className="absolute -right-8 top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-[#8b949e] hover:text-white"
+                  className="absolute -right-10 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-2 text-[#8b949e] hover:text-white"
                 >
                   <Icons.Microphone />
                 </button>
@@ -405,13 +417,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
             )}
           </div>
         ))}
-        {isLoading && <div className="p-3 bg-[#161b22] w-10 h-6 flex items-center justify-center rounded-full animate-pulse border border-[#30363d]">
-          <div className="flex gap-1">
-            <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-            <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-            <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+        {isLoading && (
+          <div className="p-3 bg-[#161b22] w-12 h-7 flex items-center justify-center rounded-full border border-[#30363d] animate-pulse">
+            <div className="flex gap-1">
+              <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce" />
+              <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce [animation-delay:0.2s]" />
+              <div className="w-1 h-1 bg-[#8b949e] rounded-full animate-bounce [animation-delay:0.4s]" />
+            </div>
           </div>
-        </div>}
+        )}
       </div>
 
       <div 
@@ -422,41 +436,39 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
           onMouseDown={handleMouseDown}
           className="absolute -top-1 left-0 w-full h-2 cursor-row-resize z-20 group flex items-center justify-center"
         >
-          <div className={`h-[2px] w-12 rounded-full transition-all ${isResizing ? 'bg-[#58a6ff] w-24' : 'bg-[#30363d] group-hover:bg-[#484f58] group-hover:w-16'}`}></div>
+          <div className={`h-[2px] w-16 rounded-full transition-all ${isResizing ? 'bg-[#58a6ff] w-32' : 'bg-[#30363d] group-hover:bg-[#484f58]'}`}></div>
         </div>
 
-        <div className="flex-1 p-3 overflow-hidden flex flex-col">
-          <div className="max-w-4xl mx-auto w-full flex-1 flex flex-col gap-2">
+        <div className="flex-1 p-3 overflow-hidden">
+          <div className="max-w-4xl mx-auto h-full flex flex-col gap-2">
             {isListening && (
-              <div className="flex items-center gap-2 px-1">
-                <span className="text-[9px] font-bold text-[#58a6ff] animate-pulse">
-                  {language === 'zh' ? '正在识别...' : 'Listening...'}
-                </span>
-                <div className="flex-1 bg-[#21262d] h-0.5 rounded-full overflow-hidden">
-                  <div className="h-full bg-[#58a6ff] transition-all" style={{ width: `${Math.min(100, (volume / 100) * 100)}%` }}></div>
+              <div className="flex items-center gap-3 px-2">
+                <span className="text-[10px] font-bold text-[#58a6ff] animate-pulse">{t.listening}</span>
+                <div className="flex-1 bg-[#21262d] h-1 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#58a6ff] transition-all" style={{ width: `${Math.min(100, volume * 1.5)}%` }}></div>
                 </div>
               </div>
             )}
-            <div className="flex items-end gap-2 flex-1 min-h-0">
+            <div className="flex items-end gap-3 flex-1 min-h-0">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
                 placeholder={isListening ? t.listening : (mode === 'COACH' ? t.askPlaceholder : t.explainPlaceholder)}
-                className="flex-1 bg-[#161b22] border border-[#30363d] rounded-lg p-3 text-sm focus:ring-1 focus:ring-[#1f6feb] outline-none h-full resize-none transition-all placeholder:text-[#484f58] custom-scrollbar"
+                className="flex-1 bg-[#161b22] border border-[#30363d] rounded-xl p-3 text-sm focus:ring-1 focus:ring-[#1f6feb] outline-none h-full resize-none transition-all placeholder:text-[#484f58] custom-scrollbar"
               />
-              <div className="flex gap-1.5 pb-0.5">
+              <div className="flex gap-2 pb-1">
                 <button
                   onClick={toggleVoiceInput}
                   disabled={isInitializingVoice}
-                  className={`p-2.5 rounded-lg transition-all ${isListening ? 'bg-[#f85149] text-white scale-105' : 'bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:text-white'}`}
+                  className={`p-3 rounded-xl transition-all ${isListening ? 'bg-[#f85149] text-white scale-110 shadow-lg' : 'bg-[#21262d] text-[#8b949e] border border-[#30363d] hover:text-white'}`}
                 >
                   {isInitializingVoice ? '...' : <Icons.Microphone />}
                 </button>
                 <button 
                   onClick={handleSend}
                   disabled={!input.trim() || isLoading}
-                  className="p-2.5 bg-[#1f6feb] text-white rounded-lg disabled:opacity-30 hover:bg-[#388bfd] transition-colors"
+                  className="p-3 bg-[#1f6feb] text-white rounded-xl disabled:opacity-30 hover:bg-[#388bfd] transition-all active:scale-95"
                 >
                   <Icons.Send />
                 </button>

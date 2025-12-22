@@ -6,13 +6,22 @@ import ChatWindow from './components/ChatWindow';
 import ArtifactsList from './components/ArtifactsList';
 import QuizView from './components/QuizView';
 import SettingsView from './components/SettingsView';
-import { AppMode, LearningArtifact, Language, UserProgress } from './types';
+import { AppMode, LearningArtifact, Language, UserProgress, Message } from './types';
 import { translations } from './translations';
-import { getDirectoryHandle, syncArtifactToLocal } from './services/sync';
 
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.DASHBOARD);
   const [artifacts, setArtifacts] = useState<LearningArtifact[]>([]);
+  
+  const [coachHistory, setCoachHistory] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('rust_coach_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+  const [feynmanHistory, setFeynmanHistory] = useState<Message[]>(() => {
+    const saved = localStorage.getItem('rust_feynman_history');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [customTopics, setCustomTopics] = useState<string[] | null>(() => {
     const saved = localStorage.getItem('rust_custom_topics');
     return saved ? JSON.parse(saved) : null;
@@ -31,6 +40,14 @@ const App: React.FC = () => {
   const [language, setLanguage] = useState<Language>(() => {
     return (localStorage.getItem('rust_mentor_lang') as Language) || 'en';
   });
+
+  useEffect(() => {
+    localStorage.setItem('rust_coach_history', JSON.stringify(coachHistory));
+  }, [coachHistory]);
+
+  useEffect(() => {
+    localStorage.setItem('rust_feynman_history', JSON.stringify(feynmanHistory));
+  }, [feynmanHistory]);
 
   useEffect(() => {
     localStorage.setItem('rust_mentor_lang', language);
@@ -54,49 +71,37 @@ const App: React.FC = () => {
       try {
         setArtifacts(JSON.parse(saved));
       } catch (e) {
-        console.error("Failed to parse local artifacts");
+        console.error("Failed to parse artifacts");
       }
     }
   }, []);
 
-  const handleAddArtifact = async (content: string) => {
+  const handleAddArtifact = (content: string) => {
     const t = translations[language];
     const newArtifact: LearningArtifact = {
       id: Date.now().toString(),
-      title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString().replace(/\//g, '-')}`,
+      title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString()}`,
       date: new Date().toLocaleDateString().replace(/\//g, '-'),
       content: content,
-      tags: ['Rust', 'Session', activeMode === AppMode.FEYNMAN ? 'Feynman' : 'Mentorship']
+      tags: ['Rust', activeMode === AppMode.FEYNMAN ? 'Feynman' : 'Mentorship']
     };
     
     const updated = [newArtifact, ...artifacts];
     setArtifacts(updated);
     localStorage.setItem('rust_artifacts', JSON.stringify(updated));
     
-    const autoSync = localStorage.getItem('rust_auto_sync') === 'true';
-    if (autoSync) {
-      const handle = await getDirectoryHandle();
-      if (handle) {
-        const success = await syncArtifactToLocal(newArtifact, handle);
-        if (success) {
-          console.log("Local sync successful");
-        } else {
-          alert(language === 'zh' ? '本地文件同步失败，请在设置中重新连接文件夹。' : 'Local sync failed. Please reconnect the folder in Settings.');
-        }
-      }
-    }
-
+    // 移除实验性的 File System API 自动同步，改为跳转到成果列表
     setActiveMode(AppMode.ARTIFACTS);
-    alert(t.artifactSaved);
+    alert(language === 'zh' ? '成果已保存到成果库！你可以随时下载为 Markdown。' : 'Artifact saved to your library! You can download it as Markdown anytime.');
   };
 
-  const handleLanguageToggle = () => {
-    setLanguage(prev => prev === 'en' ? 'zh' : 'en');
-  };
+  const handleLanguageToggle = () => setLanguage(prev => prev === 'en' ? 'zh' : 'en');
 
   const handleUpdateTopics = (topics: string[]) => {
     setCustomTopics(topics.length > 0 ? topics : null);
     setProgress(prev => ({ ...prev, currentChapterIndex: 0, completedChapters: [] }));
+    setCoachHistory([]);
+    setFeynmanHistory([]);
   };
 
   const handlePassQuiz = () => {
@@ -109,7 +114,7 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (window.confirm(language === 'zh' ? '确定要重置所有进度吗？这将清除所有本地数据。' : 'Are you sure you want to reset all progress? This will clear all local data.')) {
+    if (window.confirm(language === 'zh' ? '确定要重置吗？' : 'Reset all data?')) {
       localStorage.clear();
       window.location.reload();
     }
@@ -139,6 +144,8 @@ const App: React.FC = () => {
           <ChatWindow 
             mode="COACH" 
             language={language} 
+            messages={coachHistory}
+            setMessages={setCoachHistory}
             onNewArtifact={handleAddArtifact} 
             chapterContext={currentChapterTitle}
             onStartQuiz={() => setActiveMode(AppMode.QUIZ)}
@@ -154,25 +161,21 @@ const App: React.FC = () => {
           />
         );
       case AppMode.FEYNMAN:
-        return <ChatWindow mode="FEYNMAN" language={language} onNewArtifact={handleAddArtifact} />;
+        return (
+          <ChatWindow 
+            mode="FEYNMAN" 
+            language={language} 
+            messages={feynmanHistory}
+            setMessages={setFeynmanHistory}
+            onNewArtifact={handleAddArtifact} 
+          />
+        );
       case AppMode.ARTIFACTS:
         return <ArtifactsList artifacts={artifacts} language={language} />;
       case AppMode.SETTINGS:
         return <SettingsView language={language} onReset={handleReset} />;
       default:
-        return (
-          <Dashboard 
-            language={language} 
-            customTopics={customTopics} 
-            onUpdateTopics={handleUpdateTopics} 
-            progress={progress}
-            artifactsCount={artifacts.length}
-            onStartLesson={(index) => {
-              setProgress(prev => ({ ...prev, currentChapterIndex: index }));
-              setActiveMode(AppMode.LEARN);
-            }}
-          />
-        );
+        return <Dashboard language={language} customTopics={customTopics} onUpdateTopics={handleUpdateTopics} progress={progress} artifactsCount={artifacts.length} onStartLesson={() => setActiveMode(AppMode.LEARN)} />;
     }
   };
 

@@ -1,8 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { LLMConfig, Language, LLMProvider } from '../types';
 import { translations } from '../translations';
-import { getDirectoryHandle, saveDirectoryHandle, clearDirectoryHandle } from '../services/sync';
 
 interface SettingsViewProps {
   language: Language;
@@ -25,61 +24,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
   });
 
   const [isSaved, setIsSaved] = useState(false);
-  const [syncHandle, setSyncHandle] = useState<FileSystemDirectoryHandle | null>(null);
-  const [autoSync, setAutoSync] = useState(() => localStorage.getItem('rust_auto_sync') === 'true');
-  const [syncError, setSyncError] = useState<string | null>(null);
-  
-  // 检测是否支持 File System Access API 以及是否在 iframe 中
-  const isFileSystemApiSupported = 'showDirectoryPicker' in window;
-  const isIframe = window.self !== window.top;
-
-  useEffect(() => {
-    const loadHandle = async () => {
-      try {
-        const handle = await getDirectoryHandle();
-        setSyncHandle(handle);
-      } catch (e) {
-        console.warn("Failed to retrieve directory handle from IndexedDB");
-      }
-    };
-    if (isFileSystemApiSupported) {
-      loadHandle();
-    }
-  }, [isFileSystemApiSupported]);
 
   const handleSave = () => {
     localStorage.setItem('rust_llm_config', JSON.stringify(config));
-    localStorage.setItem('rust_auto_sync', autoSync.toString());
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
-  };
-
-  const handleFolderSelect = async () => {
-    setSyncError(null);
-    try {
-      if (!isFileSystemApiSupported) {
-        throw new Error("NOT_SUPPORTED");
-      }
-      // @ts-ignore
-      const handle = await window.showDirectoryPicker();
-      await saveDirectoryHandle(handle);
-      setSyncHandle(handle);
-    } catch (e: any) {
-      console.error("Folder picker error", e);
-      if (e.name === 'SecurityError' || e.message?.includes('Cross-origin')) {
-        setSyncError(t.syncError);
-      } else if (e.message === "NOT_SUPPORTED") {
-        setSyncError(language === 'zh' ? "当前浏览器不支持本地文件系统访问。" : "Browser does not support File System Access API.");
-      } else if (e.name !== 'AbortError') {
-        setSyncError(language === 'zh' ? `文件夹选择失败: ${e.message}` : `Failed to select folder: ${e.message}`);
-      }
-    }
-  };
-
-  const handleClearSync = async () => {
-    await clearDirectoryHandle();
-    setSyncHandle(null);
-    setSyncError(null);
   };
 
   const handleGeminiKeySelect = async () => {
@@ -149,83 +98,17 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
         )}
       </div>
 
-      {/* Local Sync Configuration */}
-      <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-8 space-y-6">
-        <header>
-          <div className="flex items-center gap-2 mb-1">
-            <h2 className="text-xl font-bold text-white">{t.localSyncTitle}</h2>
-            {(isIframe || !isFileSystemApiSupported) && (
-              <span className="text-[10px] bg-amber-900/30 text-amber-400 px-2 py-0.5 rounded border border-amber-900/50 uppercase font-bold">
-                {language === 'zh' ? '受限环境' : 'Limited'}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-[#8b949e]">{t.localSyncDesc}</p>
-        </header>
-
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-[#c9d1d9]">{t.autoSync}</span>
-            <button
-              onClick={() => setAutoSync(!autoSync)}
-              disabled={!syncHandle}
-              className={`w-12 h-6 rounded-full transition-colors relative disabled:opacity-30 ${autoSync ? 'bg-[#238636]' : 'bg-[#30363d]'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoSync ? 'left-7' : 'left-1'}`} />
-            </button>
-          </div>
-
-          <div className="p-4 bg-[#0d1117] border border-[#30363d] rounded-lg">
-            {syncHandle ? (
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-[#8b949e] mb-1">{t.folderConnected}:</p>
-                  <p className="text-sm text-[#58a6ff] font-mono">{syncHandle.name}</p>
-                </div>
-                <button
-                  onClick={handleClearSync}
-                  className="text-xs text-[#f85149] hover:underline"
-                >
-                  Clear
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <button
-                  onClick={handleFolderSelect}
-                  className={`w-full py-2 border border-dashed border-[#484f58] text-[#8b949e] rounded-md text-sm hover:border-[#58a6ff] hover:text-[#58a6ff] transition-all`}
-                >
-                  + {t.selectFolder}
-                </button>
-                {(syncError || isIframe) && (
-                  <div className="p-4 bg-amber-900/10 border border-amber-900/20 rounded-lg space-y-2">
-                    <p className="text-xs text-amber-200 leading-relaxed font-medium">
-                      {syncError || (language === 'zh' ? "检测到应用运行在 iframe 容器中，浏览器安全策略可能会阻止直接访问本地文件系统。" : "Detected cross-origin environment. Browser security may block direct file system access.")}
-                    </p>
-                    <p className="text-[11px] text-amber-200/60 italic">
-                      {language === 'zh' 
-                        ? "提示：如果文件夹选择失败，请前往“学习成果”页面，使用“下载 Markdown”手动保存到你的 artifacts 文件夹。" 
-                        : "Tip: If folder selection fails, go to the 'Artifacts' page and use 'Download Markdown' to save files manually."}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Danger Zone */}
       <div className="bg-[#161b22] border border-red-900/30 rounded-xl p-8 space-y-6">
         <header>
           <h2 className="text-xl font-bold text-red-400 mb-1">{language === 'zh' ? '危险区域' : 'Danger Zone'}</h2>
-          <p className="text-sm text-[#8b949e]">{language === 'zh' ? '管理敏感应用数据' : 'Manage sensitive app data'}</p>
+          <p className="text-sm text-[#8b949e]">{language === 'zh' ? '管理应用数据' : 'Manage app data'}</p>
         </header>
         
         <div className="flex items-center justify-between p-4 bg-red-900/10 border border-red-900/20 rounded-lg">
           <div>
             <p className="text-sm font-bold text-white">{language === 'zh' ? '重置所有数据' : 'Reset All Data'}</p>
-            <p className="text-xs text-[#8b949e]">{language === 'zh' ? '这将清除所有进度、成果和配置。' : 'This will clear all progress, artifacts and config.'}</p>
+            <p className="text-xs text-[#8b949e]">{language === 'zh' ? '这将清除所有对话进度、学习成果和模型配置。' : 'This will clear all chat progress, artifacts and config.'}</p>
           </div>
           <button 
             onClick={onReset}
