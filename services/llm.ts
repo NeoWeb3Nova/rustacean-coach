@@ -8,6 +8,17 @@ const getConfig = (): LLMConfig => {
   return { provider: 'gemini', model: 'gemini-3-flash-preview', apiKey: '' };
 };
 
+/**
+ * 确保已选择 API Key 的辅助函数
+ */
+async function ensureApiKey() {
+  // @ts-ignore
+  if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
+    // @ts-ignore
+    await window.aistudio.openSelectKey();
+  }
+}
+
 export const generateLearningResponse = async (
   messages: Message[], 
   systemInstruction: string,
@@ -39,14 +50,6 @@ export const generateLearningResponse = async (
 
 export const textToSpeech = async (text: string, language: Language): Promise<Uint8Array | null> => {
   try {
-    // Check if key selection is needed for high-tier preview models
-    // @ts-ignore
-    if (window.aistudio && !(await window.aistudio.hasSelectedApiKey())) {
-       // @ts-ignore
-       await window.aistudio.openSelectKey();
-       // Procedural assumption as per guidelines: proceed after trigger
-    }
-
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = language === 'zh' 
       ? `朗读以下 Rust 教学内容：${text}`
@@ -79,43 +82,63 @@ export const textToSpeech = async (text: string, language: Language): Promise<Ui
     return null;
   } catch (error: any) {
     console.error("TTS Error:", error);
-    // Handle the "entity not found" error by prompting for key selection
-    if (error?.message?.includes("Requested entity was not found") || error?.message?.includes("Rpc failed")) {
-      // @ts-ignore
-      if (window.aistudio) {
-        window.aistudio.openSelectKey();
-      }
-    }
     return null;
   }
 };
 
 export const analyzePdfForCurriculum = async (base64Pdf: string, language: Language) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const langText = language === 'zh' ? 'Chinese' : 'English';
+  // 预检 API Key
+  await ensureApiKey();
   
-  const prompt = `Analyze this PDF document and extract its main chapters for a Rust curriculum. Return JSON array of strings in ${langText}.`;
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const langText = language === 'zh' ? 'Chinese (Simplified)' : 'English';
+  
+  // 使用 Flash 模型进行快速结构化提取，性能更稳健
+  const prompt = `You are a professional Rust curriculum expert. 
+Task: Analyze the provided PDF document and generate a structured learning roadmap.
+Requirements:
+1. Identify the core Rust concepts and sections present in the text.
+2. Group them into 8-12 logical chapters.
+3. Chapter titles MUST be in ${langText}.
+4. Return ONLY a JSON object with a 'chapters' key.
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: [
-      {
-        parts: [
-          { inlineData: { mimeType: 'application/pdf', data: base64Pdf } },
-          { text: prompt },
-        ],
-      },
-    ],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.ARRAY,
-        items: { type: Type.STRING },
-      },
-    },
-  });
+Expected format: { "chapters": ["Intro to Rust", "Ownership System", ...] }`;
 
-  return JSON.parse(response.text || "[]") as string[];
+  try {
+    console.log("LLM: Starting PDF analysis...");
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: [
+        {
+          parts: [
+            { inlineData: { mimeType: 'application/pdf', data: base64Pdf } },
+            { text: prompt },
+          ],
+        },
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            chapters: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
+          },
+          required: ["chapters"]
+        },
+      },
+    });
+
+    const text = response.text;
+    console.log("LLM: Analysis complete. Raw output:", text);
+    const result = JSON.parse(text || '{"chapters": []}');
+    return result.chapters as string[];
+  } catch (err: any) {
+    console.error("LLM: PDF analysis error:", err);
+    throw err;
+  }
 };
 
 export const generateQuizForChapter = async (chapterTitle: string, language: Language) => {
@@ -157,11 +180,9 @@ export const getSystemPrompt = (lang: Language, contextChapter?: string) => {
 LANGUAGE RULE:
 - ALWAYS explain concepts in the user's requested language: ${langText}.
 - While you can keep technical keywords in English (e.g., "Ownership", "Borrowing", "Trait"), your main explanation and logic MUST be in ${langText}.
-- DO NOT tell the user you only communicate in English. You are multilingual.
 
 PEDAGOGY:
 - Use the Feynman Technique: explain complex things simply.
-- If in FEYNMAN mode, critique the user's explanation.
 - Use structured Markdown with clear headers (###), bold text (**), and code blocks (\`\`\`rust).
 ${chapterFocus}`;
 };
