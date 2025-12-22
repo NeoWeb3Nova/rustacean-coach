@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Message, Language } from '../types';
 import { Icons } from '../constants';
-import { generateLearningResponse, getSystemPrompt, textToSpeech } from '../services/llm';
+import { generateLearningResponse, getSystemPrompt, textToSpeech, generateArtifactFromChat } from '../services/llm';
 import { translations } from '../translations';
 
 interface ChatWindowProps {
@@ -102,6 +102,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isGeneratingArtifact, setIsGeneratingArtifact] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isInitializingVoice, setIsInitializingVoice] = useState(false);
   const [isAutoSpeak, setIsAutoSpeak] = useState(() => localStorage.getItem('rust_auto_speak') === 'true');
@@ -138,9 +139,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      // Calculate height from bottom
       const newHeight = window.innerHeight - e.clientY;
-      // Clamp values
       if (newHeight >= 80 && newHeight <= 450) {
         setInputAreaHeight(newHeight);
       }
@@ -337,6 +336,22 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
     }
   };
 
+  const handleArtifactGeneration = async () => {
+    if (messages.length < 2 || isGeneratingArtifact) return;
+    setIsGeneratingArtifact(true);
+    try {
+      const artifactContent = await generateArtifactFromChat(messages, language);
+      if (artifactContent && onNewArtifact) {
+        onNewArtifact(artifactContent);
+      }
+    } catch (error) {
+      console.error("Artifact generation error:", error);
+      alert(language === 'zh' ? '生成成果失败，请稍后重试。' : 'Failed to generate artifact. Please try again.');
+    } finally {
+      setIsGeneratingArtifact(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-[#0d1117]">
       <div className="p-2.5 border-b border-[#30363d] flex justify-between items-center bg-[#161b22] shrink-0">
@@ -345,13 +360,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
           <p className="text-[10px] text-[#8b949e] truncate max-w-xs">{chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}</p>
         </div>
         <div className="flex gap-2 items-center">
-          <button 
-            onClick={() => setIsAutoSpeak(!isAutoSpeak)}
-            className={`p-1.5 rounded-md transition-all ${isAutoSpeak ? 'text-[#58a6ff] bg-[#1f6feb22]' : 'text-[#8b949e] hover:text-white'}`}
-          >
-            <Icons.Microphone />
-          </button>
-          {onStartQuiz && <button onClick={onStartQuiz} className="text-[10px] bg-[#1f6feb] text-white px-2 py-1 rounded-md font-bold hover:bg-[#388bfd] transition-colors">{t.takeQuiz}</button>}
+          {onNewArtifact && (
+            <button 
+              onClick={handleArtifactGeneration}
+              disabled={messages.length < 2 || isGeneratingArtifact}
+              className="text-[10px] bg-[#238636] hover:bg-[#2ea043] disabled:opacity-30 text-white px-2 py-1 rounded-md font-bold transition-all flex items-center gap-1.5"
+            >
+              {isGeneratingArtifact ? (
+                <div className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <Icons.Archive />
+              )}
+              {t.genArtifact}
+            </button>
+          )}
+          {onStartQuiz && (
+            <button 
+              onClick={onStartQuiz} 
+              className="text-[10px] bg-[#1f6feb] text-white px-2 py-1 rounded-md font-bold hover:bg-[#388bfd] transition-colors"
+            >
+              {t.takeQuiz}
+            </button>
+          )}
         </div>
       </div>
 
@@ -384,12 +414,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ mode, language, onNewArtifact, 
         </div>}
       </div>
 
-      {/* Resizable Input Area */}
       <div 
         className="border-t border-[#30363d] bg-[#0d1117] shrink-0 relative flex flex-col"
         style={{ height: `${inputAreaHeight}px` }}
       >
-        {/* Resize Handle */}
         <div 
           onMouseDown={handleMouseDown}
           className="absolute -top-1 left-0 w-full h-2 cursor-row-resize z-20 group flex items-center justify-center"

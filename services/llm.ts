@@ -48,6 +48,41 @@ export const generateLearningResponse = async (
   });
 };
 
+/**
+ * 将对话历史生成为结构化的学习成果
+ */
+export const generateArtifactFromChat = async (messages: Message[], language: Language) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const langText = language === 'zh' ? 'Chinese (Simplified)' : 'English';
+  
+  const chatHistory = messages
+    .filter(m => m.role !== 'system')
+    .map(m => `${m.role === 'user' ? 'Learner' : 'Mentor'}: ${m.text}`)
+    .join('\n\n');
+
+  const prompt = `Based on the following Rust learning conversation, generate a high-quality, structured Markdown "Knowledge Artifact".
+The content should be in ${langText}.
+
+Include:
+1. **Concept Summary**: Briefly explain the core concepts discussed.
+2. **Key Code Snippets**: Provide the most important code examples from the chat with comments.
+3. **Common Pitfalls**: Highlight what the learner struggled with or typical Rust errors mentioned.
+4. **Feynman Gap Analysis**: Identify specific areas where the learner's understanding could be deeper.
+
+Return ONLY the Markdown content.
+
+CONVERSATION:
+${chatHistory}`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: [{ parts: [{ text: prompt }] }],
+    config: { temperature: 0.3 }
+  });
+
+  return response.text;
+};
+
 export const textToSpeech = async (text: string, language: Language): Promise<Uint8Array | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -87,13 +122,10 @@ export const textToSpeech = async (text: string, language: Language): Promise<Ui
 };
 
 export const analyzePdfForCurriculum = async (base64Pdf: string, language: Language) => {
-  // 预检 API Key
   await ensureApiKey();
-  
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const langText = language === 'zh' ? 'Chinese (Simplified)' : 'English';
   
-  // 使用 Flash 模型进行快速结构化提取，性能更稳健
   const prompt = `You are a professional Rust curriculum expert. 
 Task: Analyze the provided PDF document and generate a structured learning roadmap.
 Requirements:
@@ -105,7 +137,6 @@ Requirements:
 Expected format: { "chapters": ["Intro to Rust", "Ownership System", ...] }`;
 
   try {
-    console.log("LLM: Starting PDF analysis...");
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: [
@@ -132,7 +163,6 @@ Expected format: { "chapters": ["Intro to Rust", "Ownership System", ...] }`;
     });
 
     const text = response.text;
-    console.log("LLM: Analysis complete. Raw output:", text);
     const result = JSON.parse(text || '{"chapters": []}');
     return result.chapters as string[];
   } catch (err: any) {
