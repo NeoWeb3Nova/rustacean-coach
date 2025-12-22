@@ -24,11 +24,31 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
   });
 
   const [isSaved, setIsSaved] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   const handleSave = () => {
     localStorage.setItem('rust_llm_config', JSON.stringify(config));
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  const handleResetApp = async () => {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      // 自动取消确认状态，防止误触
+      setTimeout(() => setConfirmReset(false), 5000);
+      return;
+    }
+
+    setIsResetting(true);
+    // 给予 800ms 的视觉锁定时间，然后执行逻辑重置
+    setTimeout(() => {
+      onReset();
+      // 重置后 SettingsView 可能会被 App.tsx 切走，但以防万一这里也清理状态
+      setIsResetting(false);
+      setConfirmReset(false);
+    }, 800);
   };
 
   const handleGeminiKeySelect = async () => {
@@ -55,7 +75,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
           <select
             value={config.provider}
             onChange={(e) => setConfig({ ...config, provider: e.target.value as LLMProvider })}
-            className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none"
+            className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none transition-all"
           >
             {PROVIDERS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
@@ -68,7 +88,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
             value={config.model}
             placeholder={config.provider === 'gemini' ? 'gemini-3-pro-preview' : 'gpt-4o'}
             onChange={(e) => setConfig({ ...config, model: e.target.value })}
-            className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none font-mono text-sm"
+            className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none font-mono text-sm transition-all"
           />
         </div>
 
@@ -77,7 +97,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
             <p className="text-sm text-[#8b949e] mb-3">{t.geminiKeyInfo}</p>
             <button
               onClick={handleGeminiKeySelect}
-              className="flex items-center gap-2 px-4 py-2 bg-[#21262d] hover:bg-[#30363d] text-white border border-[#30363d] rounded-md text-sm font-bold transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-[#21262d] hover:bg-[#30363d] text-white border border-[#30363d] rounded-md text-sm font-bold transition-all active:scale-95"
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
@@ -92,38 +112,56 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
               type="password"
               value={config.apiKey}
               onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-              className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none font-mono text-sm"
+              className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none font-mono text-sm transition-all"
             />
           </div>
         )}
       </div>
 
       {/* Danger Zone */}
-      <div className="bg-[#161b22] border border-red-900/30 rounded-xl p-8 space-y-6">
+      <div className={`bg-[#161b22] border rounded-xl p-8 space-y-6 transition-all duration-300 ${confirmReset ? 'border-red-500 ring-1 ring-red-500/20' : 'border-red-900/30'}`}>
         <header>
           <h2 className="text-xl font-bold text-red-400 mb-1">{language === 'zh' ? '危险区域' : 'Danger Zone'}</h2>
-          <p className="text-sm text-[#8b949e]">{language === 'zh' ? '管理应用数据' : 'Manage app data'}</p>
+          <p className="text-sm text-[#8b949e]">{language === 'zh' ? '管理应用持久化数据' : 'Manage app persistent data'}</p>
         </header>
         
-        <div className="flex items-center justify-between p-4 bg-red-900/10 border border-red-900/20 rounded-lg">
-          <div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between p-5 bg-red-900/10 border border-red-900/20 rounded-lg gap-4">
+          <div className="flex-1">
             <p className="text-sm font-bold text-white">{language === 'zh' ? '重置所有数据' : 'Reset All Data'}</p>
-            <p className="text-xs text-[#8b949e]">{language === 'zh' ? '这将清除所有对话进度、学习成果和模型配置。' : 'This will clear all chat progress, artifacts and config.'}</p>
+            <p className="text-xs text-[#8b949e] mt-1 leading-relaxed">
+              {language === 'zh' 
+                ? '警告：这将永久清除所有学习进度、自定义路线图、对话历史和模型配置。操作不可撤销。' 
+                : 'Warning: This will permanently clear all learning progress, custom roadmaps, histories and config. This cannot be undone.'}
+            </p>
           </div>
           <button 
-            onClick={onReset}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-bold transition-all shadow-md active:scale-95"
+            onClick={handleResetApp}
+            disabled={isResetting}
+            className={`px-6 py-2.5 rounded-md text-xs font-bold transition-all shadow-lg active:scale-95 whitespace-nowrap ${
+              isResetting 
+                ? 'bg-gray-700 text-gray-400 cursor-not-allowed opacity-50'
+                : confirmReset 
+                  ? 'bg-red-500 hover:bg-red-400 text-white animate-pulse' 
+                  : 'bg-red-600 hover:bg-red-700 text-white'
+            }`}
           >
-            {language === 'zh' ? '重置应用' : 'Reset App'}
+            {isResetting 
+              ? (language === 'zh' ? '正在执行重置...' : 'Executing Reset...') 
+              : confirmReset 
+                ? (language === 'zh' ? '确认并执行！' : 'Confirm & Execute!') 
+                : (language === 'zh' ? '重置应用' : 'Reset App')}
           </button>
         </div>
       </div>
 
-      <div className="pt-4 flex items-center justify-between">
+      <div className="pt-4 flex items-center justify-between border-t border-[#30363d] mt-10">
         <button
           onClick={handleSave}
-          className="px-8 py-3 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md font-bold transition-all shadow-md active:scale-95"
+          className="px-8 py-3 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md font-bold transition-all shadow-md active:scale-95 flex items-center gap-2"
         >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
           {t.saveConfig}
         </button>
         

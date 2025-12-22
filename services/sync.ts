@@ -37,7 +37,7 @@ export const getDirectoryHandle = async (): Promise<FileSystemDirectoryHandle | 
     const store = transaction.objectStore(STORE_NAME);
     const request = store.get(HANDLE_KEY);
     request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => resolve(null); // Return null instead of rejecting
+    request.onerror = () => resolve(null);
   });
 };
 
@@ -45,6 +45,17 @@ export const clearDirectoryHandle = async () => {
   const db = await openDB();
   const transaction = db.transaction(STORE_NAME, 'readwrite');
   transaction.objectStore(STORE_NAME).delete(HANDLE_KEY);
+};
+
+/**
+ * 彻底销毁所有 IndexedDB 数据
+ */
+export const nukeDatabase = (): Promise<void> => {
+  return new Promise((resolve) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve(); // 即使失败也继续
+  });
 };
 
 export const syncArtifactToLocal = async (artifact: LearningArtifact, handle: FileSystemDirectoryHandle): Promise<boolean> => {
@@ -72,9 +83,6 @@ export const syncArtifactToLocal = async (artifact: LearningArtifact, handle: Fi
   }
 };
 
-/**
- * Fallback to manual download if the File System Access API is blocked.
- */
 export const triggerDownload = (artifact: LearningArtifact) => {
   const safeTitle = artifact.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
   const fileName = `${artifact.date}-${safeTitle}.md`;

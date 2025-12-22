@@ -8,6 +8,7 @@ import QuizView from './components/QuizView';
 import SettingsView from './components/SettingsView';
 import { AppMode, LearningArtifact, Language, UserProgress, Message } from './types';
 import { translations } from './translations';
+import { nukeDatabase } from './services/sync';
 
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.DASHBOARD);
@@ -77,7 +78,6 @@ const App: React.FC = () => {
   }, []);
 
   const handleAddArtifact = (content: string) => {
-    const t = translations[language];
     const newArtifact: LearningArtifact = {
       id: Date.now().toString(),
       title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString()}`,
@@ -90,7 +90,6 @@ const App: React.FC = () => {
     setArtifacts(updated);
     localStorage.setItem('rust_artifacts', JSON.stringify(updated));
     
-    // 移除实验性的 File System API 自动同步，改为跳转到成果列表
     setActiveMode(AppMode.ARTIFACTS);
     alert(language === 'zh' ? '成果已保存到成果库！你可以随时下载为 Markdown。' : 'Artifact saved to your library! You can download it as Markdown anytime.');
   };
@@ -113,10 +112,43 @@ const App: React.FC = () => {
     setActiveMode(AppMode.DASHBOARD);
   };
 
-  const handleReset = () => {
-    if (window.confirm(language === 'zh' ? '确定要重置吗？' : 'Reset all data?')) {
-      localStorage.clear();
-      window.location.reload();
+  /**
+   * 软重置逻辑：清理存储并重置所有 React 状态，而不刷新页面。
+   * 这能有效防止在托管环境中出现 404。
+   */
+  const handleReset = async () => {
+    try {
+      // 1. 物理清理存储
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('rust_')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      await nukeDatabase();
+
+      // 2. 重置所有 React 状态到初始值
+      setCoachHistory([]);
+      setFeynmanHistory([]);
+      setArtifacts([]);
+      setCustomTopics(null);
+      setProgress({
+        currentLevel: 'Beginner',
+        completedChapters: [],
+        currentChapterIndex: 0,
+        totalSessions: 0
+      });
+      // 这里的 language 我们选择保留用户当前偏好，或者也可以重置为 'en'
+      
+      // 3. 导航回仪表盘
+      setActiveMode(AppMode.DASHBOARD);
+      
+      console.log("App state reset successfully without reload.");
+    } catch (e) {
+      console.error("Reset encounterd error:", e);
+      // 如果真的出错了，最后的手段才是刷新，但通常上述逻辑已经足够
     }
   };
 
