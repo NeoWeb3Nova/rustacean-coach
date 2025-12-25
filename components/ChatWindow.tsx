@@ -4,6 +4,7 @@ import { Message, Language } from '../types';
 import { Icons } from '../constants';
 import { generateLearningResponse, getSystemPrompt, textToSpeech, generateArtifactFromChat } from '../services/llm';
 import { translations } from '../translations';
+import { getDirectoryHandle } from '../services/sync';
 
 interface ChatWindowProps {
   mode: 'COACH' | 'FEYNMAN';
@@ -112,6 +113,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const [isInitializingVoice, setIsInitializingVoice] = useState(false);
   const [isAutoSpeak, setIsAutoSpeak] = useState(() => localStorage.getItem('rust_auto_speak') === 'true');
   const [volume, setVolume] = useState(0);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'ready' | 'missing'>('idle');
   
   const [inputAreaHeight, setInputAreaHeight] = useState(130);
   const [isResizing, setIsResizing] = useState(false);
@@ -123,6 +125,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
   const micStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    const checkSync = async () => {
+      const handle = await getDirectoryHandle();
+      setSyncStatus(handle ? 'ready' : 'missing');
+    };
+    checkSync();
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -365,7 +375,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
       <div className="p-3 border-b border-[#30363d] flex justify-between items-center bg-[#161b22] shrink-0">
         <div className="flex-1 overflow-hidden">
           <h2 className="font-bold text-white text-sm">{mode === 'COACH' ? t.coachTitle : t.feynmanTitle}</h2>
-          <p className="text-[10px] text-[#8b949e] truncate">{chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-[10px] text-[#8b949e] truncate">{chapterContext || (mode === 'COACH' ? t.coachSub : t.feynmanSub)}</p>
+            {syncStatus === 'ready' && (
+              <span className="flex items-center gap-1 text-[9px] text-[#238636] font-bold uppercase animate-in fade-in">
+                <div className="w-1.5 h-1.5 bg-[#238636] rounded-full"></div>
+                Auto-Sync Active
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2 items-center">
           {onNewArtifact && (
@@ -396,6 +414,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
               <Icons.Chat />
             </div>
             <p className="text-sm font-medium">{mode === 'COACH' ? t.coachInitSub : t.feynmanInitSub}</p>
+            {syncStatus === 'missing' && (
+              <p className="mt-4 text-[11px] text-[#8b949e] border border-[#30363d] px-3 py-1.5 rounded-lg bg-[#21262d]/50">
+                💡 {language === 'zh' ? '提示：在“设置”中开启本地同步，成果将自动生成到代码库。' : 'Tip: Enable local sync in Settings to auto-generate files in your repo.'}
+              </p>
+            )}
           </div>
         )}
         {messages.map((m, idx) => (

@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LLMConfig, Language, LLMProvider } from '../types';
 import { translations } from '../translations';
+import { getDirectoryHandle, saveDirectoryHandle, clearDirectoryHandle } from '../services/sync';
 
 interface SettingsViewProps {
   language: Language;
@@ -26,26 +27,55 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
   const [isSaved, setIsSaved] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  
+  // File Sync States
+  const [hasFolderHandle, setHasFolderHandle] = useState(false);
+  const [isAutoSync, setIsAutoSync] = useState(() => localStorage.getItem('rust_auto_sync') === 'true');
+
+  useEffect(() => {
+    const checkHandle = async () => {
+      const handle = await getDirectoryHandle();
+      setHasFolderHandle(!!handle);
+    };
+    checkHandle();
+  }, []);
 
   const handleSave = () => {
     localStorage.setItem('rust_llm_config', JSON.stringify(config));
+    localStorage.setItem('rust_auto_sync', isAutoSync.toString());
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 3000);
+  };
+
+  const handleSelectFolder = async () => {
+    try {
+      // @ts-ignore
+      const handle = await window.showDirectoryPicker({
+        mode: 'readwrite'
+      });
+      await saveDirectoryHandle(handle);
+      setHasFolderHandle(true);
+      alert(language === 'zh' ? '成功连接到文件夹！' : 'Folder connected successfully!');
+    } catch (err) {
+      console.error("Folder selection cancelled or failed", err);
+    }
+  };
+
+  const handleDisconnectFolder = async () => {
+    await clearDirectoryHandle();
+    setHasFolderHandle(false);
+    setIsAutoSync(false);
   };
 
   const handleResetApp = async () => {
     if (!confirmReset) {
       setConfirmReset(true);
-      // 自动取消确认状态，防止误触
       setTimeout(() => setConfirmReset(false), 5000);
       return;
     }
-
     setIsResetting(true);
-    // 给予 800ms 的视觉锁定时间，然后执行逻辑重置
     setTimeout(() => {
       onReset();
-      // 重置后 SettingsView 可能会被 App.tsx 切走，但以防万一这里也清理状态
       setIsResetting(false);
       setConfirmReset(false);
     }, 800);
@@ -114,6 +144,49 @@ const SettingsView: React.FC<SettingsViewProps> = ({ language, onReset }) => {
               onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
               className="w-full bg-[#0d1117] border border-[#30363d] rounded-md px-4 py-2 text-white focus:ring-1 focus:ring-[#1f6feb] outline-none font-mono text-sm transition-all"
             />
+          </div>
+        )}
+      </div>
+
+      {/* Local Sync Configuration */}
+      <div className="bg-[#161b22] border border-[#30363d] rounded-xl p-8 space-y-6">
+        <header>
+          <h2 className="text-xl font-bold text-white mb-1">{t.localSyncTitle}</h2>
+          <p className="text-sm text-[#8b949e]">{t.localSyncDesc}</p>
+        </header>
+
+        {!hasFolderHandle ? (
+          <button
+            onClick={handleSelectFolder}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#21262d] hover:bg-[#30363d] text-white border border-[#30363d] rounded-md text-sm font-bold transition-all"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+            {t.selectFolder}
+          </button>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-[#1c2128] border border-[#238636]/30 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 bg-[#238636] rounded-full animate-pulse"></div>
+                <span className="text-sm text-white font-medium">{t.folderConnected}</span>
+              </div>
+              <button onClick={handleDisconnectFolder} className="text-xs text-[#f85149] hover:underline font-bold">
+                {language === 'zh' ? '取消连接' : 'Disconnect'}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-[#0d1117] border border-[#30363d] rounded-lg">
+              <div>
+                <p className="text-sm font-bold text-white">{t.autoSync}</p>
+                <p className="text-xs text-[#8b949e] mt-0.5">{language === 'zh' ? '生成成果时自动写入到本地文件夹' : 'Automatically write files to your folder on generation.'}</p>
+              </div>
+              <button 
+                onClick={() => setIsAutoSync(!isAutoSync)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${isAutoSync ? 'bg-[#238636]' : 'bg-[#30363d]'}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isAutoSync ? 'translate-x-6' : 'translate-x-1'}`} />
+              </button>
+            </div>
           </div>
         )}
       </div>

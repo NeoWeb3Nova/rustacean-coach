@@ -8,7 +8,7 @@ import QuizView from './components/QuizView';
 import SettingsView from './components/SettingsView';
 import { AppMode, LearningArtifact, Language, UserProgress, Message } from './types';
 import { translations } from './translations';
-import { nukeDatabase } from './services/sync';
+import { nukeDatabase, getDirectoryHandle, syncArtifactToLocal } from './services/sync';
 
 const App: React.FC = () => {
   const [activeMode, setActiveMode] = useState<AppMode>(AppMode.DASHBOARD);
@@ -77,7 +77,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  const handleAddArtifact = (content: string) => {
+  const handleAddArtifact = async (content: string) => {
     const newArtifact: LearningArtifact = {
       id: Date.now().toString(),
       title: `${language === 'zh' ? '学习成果' : 'Learning Session'}: ${new Date().toLocaleDateString()}`,
@@ -86,12 +86,27 @@ const App: React.FC = () => {
       tags: ['Rust', activeMode === AppMode.FEYNMAN ? 'Feynman' : 'Mentorship']
     };
     
+    // 1. 保存到内部状态和 localStorage
     const updated = [newArtifact, ...artifacts];
     setArtifacts(updated);
     localStorage.setItem('rust_artifacts', JSON.stringify(updated));
     
+    // 2. 尝试自动同步到本地文件夹
+    const isAutoSync = localStorage.getItem('rust_auto_sync') === 'true';
+    if (isAutoSync) {
+      const handle = await getDirectoryHandle();
+      if (handle) {
+        const success = await syncArtifactToLocal(newArtifact, handle);
+        if (success) {
+          console.log("Artifact synced to local filesystem successfully.");
+        } else {
+          console.warn("Auto-sync failed. Permission might have expired.");
+        }
+      }
+    }
+    
     setActiveMode(AppMode.ARTIFACTS);
-    alert(language === 'zh' ? '成果已保存到成果库！你可以随时下载为 Markdown。' : 'Artifact saved to your library! You can download it as Markdown anytime.');
+    alert(language === 'zh' ? '成果已保存！如果开启了自动同步，文件已写入本地。' : 'Artifact saved! If auto-sync is on, it has been written to your folder.');
   };
 
   const handleLanguageToggle = () => setLanguage(prev => prev === 'en' ? 'zh' : 'en');
@@ -112,13 +127,8 @@ const App: React.FC = () => {
     setActiveMode(AppMode.DASHBOARD);
   };
 
-  /**
-   * 软重置逻辑：清理存储并重置所有 React 状态，而不刷新页面。
-   * 这能有效防止在托管环境中出现 404。
-   */
   const handleReset = async () => {
     try {
-      // 1. 物理清理存储
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
@@ -129,7 +139,6 @@ const App: React.FC = () => {
       keysToRemove.forEach(k => localStorage.removeItem(k));
       await nukeDatabase();
 
-      // 2. 重置所有 React 状态到初始值
       setCoachHistory([]);
       setFeynmanHistory([]);
       setArtifacts([]);
@@ -140,15 +149,10 @@ const App: React.FC = () => {
         currentChapterIndex: 0,
         totalSessions: 0
       });
-      // 这里的 language 我们选择保留用户当前偏好，或者也可以重置为 'en'
       
-      // 3. 导航回仪表盘
       setActiveMode(AppMode.DASHBOARD);
-      
-      console.log("App state reset successfully without reload.");
     } catch (e) {
       console.error("Reset encounterd error:", e);
-      // 如果真的出错了，最后的手段才是刷新，但通常上述逻辑已经足够
     }
   };
 
