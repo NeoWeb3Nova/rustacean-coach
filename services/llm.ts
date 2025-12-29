@@ -61,7 +61,7 @@ export const generateArtifactFromChat = async (messages: Message[], language: La
     .join('\n\n');
 
   const prompt = `Based on the following Rust learning conversation, generate a high-quality, structured Markdown "Knowledge Artifact".
-The content should be in ${langText}.
+The content should be in the language most used in the conversation (defaulting to ${langText} if mixed).
 
 Include:
 1. **Concept Summary**: Briefly explain the core concepts discussed.
@@ -208,8 +208,10 @@ export const getSystemPrompt = (lang: Language, contextChapter?: string) => {
   return `You are a world-class Rust Programming Mentor. 
 
 LANGUAGE RULE:
-- ALWAYS explain concepts in the user's requested language: ${langText}.
-- While you can keep technical keywords in English (e.g., "Ownership", "Borrowing", "Trait"), your main explanation and logic MUST be in ${langText}.
+- MIRROR THE USER: If the user speaks to you in Chinese, respond in Chinese. If they speak in English, respond in English.
+- DYNAMIC DETECTION: Do not strictly follow the UI language (${langText}) if the user initiates a conversation in a different language. 
+- DEFAULT: Use ${langText} only if the user's language is ambiguous or they explicitly ask to switch.
+- TERMINOLOGY: Keep core Rust technical keywords in English (e.g., "Ownership", "Borrowing", "Lifetime", "Trait") even when explaining in Chinese, as this is standard practice.
 
 PEDAGOGY:
 - Use the Feynman Technique: explain complex things simply.

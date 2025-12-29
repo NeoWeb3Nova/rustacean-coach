@@ -10,13 +10,18 @@ export enum AppMode {
   SETTINGS = 'SETTINGS'
 }
 
-// Added missing LLMProvider and LLMConfig types used in Settings and LLM services
 export type LLMProvider = 'gemini' | 'openai' | 'claude' | 'grok' | 'custom';
 
 export interface LLMConfig {
   provider: LLMProvider;
   model: string;
   apiKey: string;
+}
+
+export interface GithubConfig {
+  enabled: boolean;
+  token: string;
+  gistId?: string;
 }
 
 export interface Message {
@@ -31,6 +36,7 @@ export interface LearningArtifact {
   date: string;
   content: string;
   tags: string[];
+  gistUrl?: string; // 新增：保存云端链接
 }
 
 export interface UserProgress {
