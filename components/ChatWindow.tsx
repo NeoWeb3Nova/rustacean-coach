@@ -6,6 +6,7 @@ import { generateLearningResponse, getSystemPrompt, textToSpeech, generateArtifa
 import { translations } from '../translations';
 import { getDirectoryHandle } from '../services/sync';
 
+// Define the missing ChatWindowProps interface to fix line 156 error
 interface ChatWindowProps {
   mode: 'COACH' | 'FEYNMAN';
   language: Language;
@@ -47,43 +48,110 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
         }
 
         const lines = part.split('\n');
-        return lines.map((line, j) => {
+        const renderedElements: React.ReactNode[] = [];
+        let tableBuffer: string[] = [];
+
+        const flushTable = (keyPrefix: string) => {
+          if (tableBuffer.length === 0) return null;
+          
+          const rows = tableBuffer.map(line => 
+            line.trim().split('|')
+              .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
+              .map(cell => cell.trim())
+          );
+          
+          const currentTableLines = [...tableBuffer];
+          tableBuffer = [];
+
+          if (rows.length < 2) {
+             return currentTableLines.map((line, lidx) => <p key={`${keyPrefix}-err-${lidx}`}>{line}</p>);
+          }
+
+          return (
+            <div key={`${keyPrefix}-table`} className="my-4 overflow-hidden border border-[#30363d] rounded-lg bg-[#0d1117]">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-[#30363d] text-xs">
+                  <thead className="bg-[#161b22]">
+                    <tr>
+                      {rows[0].map((cell, idx) => (
+                        <th key={idx} className="px-4 py-2.5 text-left font-bold text-[#8b949e] uppercase tracking-wider border-r border-[#30363d] last:border-r-0">
+                          {parseInline(cell)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#30363d]">
+                    {rows.slice(2).map((row, rIdx) => (
+                      <tr key={rIdx} className="hover:bg-[#21262d] transition-colors">
+                        {row.map((cell, cIdx) => (
+                          <td key={cIdx} className="px-4 py-2.5 text-[#c9d1d9] border-r border-[#30363d] last:border-r-0 leading-relaxed">
+                            {parseInline(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        };
+
+        for (let j = 0; j < lines.length; j++) {
+          const line = lines[j];
+          const trimmed = line.trim();
+          
+          if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+            tableBuffer.push(line);
+            continue;
+          }
+
+          if (tableBuffer.length > 0) {
+            renderedElements.push(flushTable(`${i}-${j}`));
+          }
+
           const trimmedLine = line.trim();
-          if (!trimmedLine) return <div key={`${i}-${j}`} className="h-1" />;
+          if (!trimmedLine) {
+            renderedElements.push(<div key={`${i}-${j}`} className="h-2" />);
+            continue;
+          }
 
           if (line.startsWith('### ')) {
-            return <h3 key={`${i}-${j}`} className="text-sm font-bold text-white mt-3 mb-1 flex items-center gap-2 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>;
-          }
-          if (line.startsWith('## ')) {
-            return <h2 key={`${i}-${j}`} className="text-base font-bold text-white mt-4 mb-2 border-b border-[#30363d] pb-1">{line.replace('## ', '')}</h2>;
-          }
-
-          if (trimmedLine.match(/^[-*+]\s/)) {
-            return (
+            renderedElements.push(<h3 key={`${i}-${j}`} className="text-sm font-bold text-white mt-3 mb-1 flex items-center gap-2 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>);
+          } else if (line.startsWith('## ')) {
+            renderedElements.push(<h2 key={`${i}-${j}`} className="text-base font-bold text-white mt-4 mb-2 border-b border-[#30363d] pb-1">{line.replace('## ', '')}</h2>);
+          } else if (trimmedLine.match(/^[-*+]\s/)) {
+            renderedElements.push(
               <div key={`${i}-${j}`} className="flex gap-2 pl-2 py-0.5">
-                <span className="text-[#1f6feb] mt-1 shrink-0">●</span>
+                <span className="text-[#1f6feb] mt-1 shrink-0 text-[10px]">●</span>
                 <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^[-*+]\s/, ''))}</span>
               </div>
             );
-          }
-          if (trimmedLine.match(/^\d+\.\s/)) {
+          } else if (trimmedLine.match(/^\d+\.\s/)) {
             const num = trimmedLine.match(/^\d+/)?.[0];
-            return (
+            renderedElements.push(
               <div key={`${i}-${j}`} className="flex gap-2 pl-2 py-0.5">
                 <span className="text-[#8b949e] font-mono text-xs mt-1 shrink-0">{num}.</span>
                 <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^\d+\.\s/, ''))}</span>
               </div>
             );
+          } else {
+            renderedElements.push(<p key={`${i}-${j}`} className="leading-relaxed mb-1 text-[#c9d1d9]">{parseInline(line)}</p>);
           }
+        }
 
-          return <p key={`${i}-${j}`} className="leading-relaxed mb-1 text-[#c9d1d9]">{parseInline(line)}</p>;
-        });
+        if (tableBuffer.length > 0) {
+          renderedElements.push(flushTable(`${i}-final`));
+        }
+
+        return <React.Fragment key={i}>{renderedElements}</React.Fragment>;
       })}
     </div>
   );
 };
 
 function parseInline(text: string) {
+  if (!text) return '';
   const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
