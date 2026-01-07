@@ -5,7 +5,7 @@ import { Message, Language, QuizQuestion, LLMConfig } from "../types";
 const getConfig = (): LLMConfig => {
   const saved = localStorage.getItem('rust_llm_config');
   if (saved) return JSON.parse(saved);
-  return { provider: 'gemini', model: 'gemini-3-flash-preview', apiKey: '' };
+  return { provider: 'gemini', model: 'gemini-3-pro-preview', apiKey: '' };
 };
 
 /**
@@ -31,7 +31,7 @@ export const generateLearningResponse = async (
     parts: [{ text: m.text }]
   }));
 
-  const modelName = config.model || "gemini-3-flash-preview";
+  const modelName = config.model || "gemini-3-pro-preview";
 
   if (useStreaming) {
     return await ai.models.generateContentStream({
@@ -75,7 +75,7 @@ CONVERSATION:
 ${chatHistory}`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: [{ parts: [{ text: prompt }] }],
     config: { temperature: 0.3 }
   });
@@ -138,7 +138,7 @@ Expected format: { "chapters": ["Intro to Rust", "Ownership System", ...] }`;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview',
       contents: [
         {
           parts: [
@@ -177,7 +177,7 @@ export const generateQuizForChapter = async (chapterTitle: string, language: Lan
   const prompt = `Generate a 3-question quiz for "${chapterTitle}" in ${langText}. Return JSON.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-pro-preview',
     contents: [{ parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",

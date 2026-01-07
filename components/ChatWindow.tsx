@@ -6,7 +6,6 @@ import { generateLearningResponse, getSystemPrompt, textToSpeech, generateArtifa
 import { translations } from '../translations';
 import { getDirectoryHandle } from '../services/sync';
 
-// Define the missing ChatWindowProps interface to fix line 156 error
 interface ChatWindowProps {
   mode: 'COACH' | 'FEYNMAN';
   language: Language;
@@ -23,24 +22,24 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
   const parts = text.split(/(```[\s\S]*?```)/g);
 
   return (
-    <div className="space-y-2 break-words overflow-hidden text-sm">
+    <div className={`space-y-2 break-words overflow-hidden text-sm ${!isModel ? 'text-white' : 'text-[#c9d1d9]'}`}>
       {parts.map((part, i) => {
         if (part.startsWith('```')) {
           const match = part.match(/```(\w+)?\n?([\s\S]*?)```/);
           const lang = match?.[1] || 'text';
           const code = match?.[2] || '';
           return (
-            <div key={i} className="my-2 rounded-md overflow-hidden border border-[#30363d] bg-[#0d1117]">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-[#30363d]">
-                <span className="text-[10px] font-mono text-[#8b949e] uppercase tracking-wider">{lang}</span>
+            <div key={i} className={`my-2 rounded-md overflow-hidden border ${isModel ? 'border-[#30363d] bg-[#0d1117]' : 'border-white/20 bg-black/20'}`}>
+              <div className={`flex items-center justify-between px-3 py-1.5 border-b ${isModel ? 'bg-[#161b22] border-[#30363d]' : 'bg-black/10 border-white/10'}`}>
+                <span className={`text-[10px] font-mono uppercase tracking-wider ${isModel ? 'text-[#8b949e]' : 'text-white/60'}`}>{lang}</span>
                 <button 
                   onClick={() => navigator.clipboard.writeText(code)}
-                  className="text-[10px] text-[#8b949e] hover:text-white transition-colors flex items-center gap-1"
+                  className={`text-[10px] transition-colors flex items-center gap-1 ${isModel ? 'text-[#8b949e] hover:text-white' : 'text-white/60 hover:text-white'}`}
                 >
                   <Icons.Copy /> Copy
                 </button>
               </div>
-              <pre className="p-3 overflow-x-auto text-[13px] font-mono leading-relaxed text-[#c9d1d9]">
+              <pre className={`p-3 overflow-x-auto text-[13px] font-mono leading-relaxed ${isModel ? 'text-[#c9d1d9]' : 'text-white'}`}>
                 <code>{code}</code>
               </pre>
             </div>
@@ -54,45 +53,53 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
         const flushTable = (keyPrefix: string) => {
           if (tableBuffer.length === 0) return null;
           
-          const rows = tableBuffer.map(line => 
-            line.trim().split('|')
-              .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
-              .map(cell => cell.trim())
-          );
+          const rows = tableBuffer.map(line => {
+            const parts = line.trim().split('|');
+            if (parts[0] === '') parts.shift();
+            if (parts[parts.length - 1] === '') parts.pop();
+            return parts.map(p => p.trim());
+          });
           
           const currentTableLines = [...tableBuffer];
           tableBuffer = [];
 
-          if (rows.length < 2) {
-             return currentTableLines.map((line, lidx) => <p key={`${keyPrefix}-err-${lidx}`}>{line}</p>);
+          const hasSeparator = currentTableLines.some(l => l.includes('---') || l.includes('-|-'));
+          if (rows.length < 2 || !hasSeparator) {
+             return currentTableLines.map((line, lidx) => (
+               <p key={`${keyPrefix}-err-${lidx}`} className="leading-relaxed mb-1 whitespace-pre-wrap">
+                 {parseInline(line, isModel)}
+               </p>
+             ));
           }
 
+          const headerRow = rows[0];
+          const separatorIdx = currentTableLines.findIndex(l => l.includes('---') || l.includes('-|-'));
+          const bodyRows = rows.filter((_, idx) => idx !== 0 && idx !== separatorIdx);
+
           return (
-            <div key={`${keyPrefix}-table`} className="my-4 overflow-hidden border border-[#30363d] rounded-lg bg-[#0d1117]">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-[#30363d] text-xs">
-                  <thead className="bg-[#161b22]">
-                    <tr>
-                      {rows[0].map((cell, idx) => (
-                        <th key={idx} className="px-4 py-2.5 text-left font-bold text-[#8b949e] uppercase tracking-wider border-r border-[#30363d] last:border-r-0">
-                          {parseInline(cell)}
-                        </th>
+            <div key={`${keyPrefix}-table`} className={`my-4 overflow-x-auto border rounded-lg ${isModel ? 'border-[#30363d] bg-[#0d1117]' : 'border-white/20 bg-black/20'}`}>
+              <table className="min-w-full divide-y divide-[#30363d] text-xs">
+                <thead className={isModel ? 'bg-[#161b22]' : 'bg-black/10'}>
+                  <tr>
+                    {headerRow.map((cell, idx) => (
+                      <th key={idx} className={`px-4 py-3 text-left font-bold uppercase tracking-wider border-r last:border-r-0 whitespace-nowrap ${isModel ? 'text-[#8b949e] border-[#30363d]' : 'text-white/80 border-white/10'}`}>
+                        {parseInline(cell, isModel)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#30363d]">
+                  {bodyRows.map((row, rIdx) => (
+                    <tr key={rIdx} className={`transition-colors ${isModel ? 'hover:bg-[#21262d]' : 'hover:bg-white/5'}`}>
+                      {row.map((cell, cIdx) => (
+                        <td key={cIdx} className={`px-4 py-3 border-r last:border-r-0 leading-relaxed ${isModel ? 'text-[#c9d1d9] border-[#30363d]' : 'text-white border-white/10'}`}>
+                          {parseInline(cell, isModel)}
+                        </td>
                       ))}
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#30363d]">
-                    {rows.slice(2).map((row, rIdx) => (
-                      <tr key={rIdx} className="hover:bg-[#21262d] transition-colors">
-                        {row.map((cell, cIdx) => (
-                          <td key={cIdx} className="px-4 py-2.5 text-[#c9d1d9] border-r border-[#30363d] last:border-r-0 leading-relaxed">
-                            {parseInline(cell)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
           );
         };
@@ -101,7 +108,7 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
           const line = lines[j];
           const trimmed = line.trim();
           
-          if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+          if (trimmed.startsWith('|')) {
             tableBuffer.push(line);
             continue;
           }
@@ -110,33 +117,40 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
             renderedElements.push(flushTable(`${i}-${j}`));
           }
 
-          const trimmedLine = line.trim();
-          if (!trimmedLine) {
+          if (!trimmed) {
             renderedElements.push(<div key={`${i}-${j}`} className="h-2" />);
             continue;
           }
 
+          if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+            renderedElements.push(<hr key={`${i}-${j}`} className={`my-6 ${isModel ? 'border-[#30363d]' : 'border-white/20'}`} />);
+            continue;
+          }
+
           if (line.startsWith('### ')) {
-            renderedElements.push(<h3 key={`${i}-${j}`} className="text-sm font-bold text-white mt-3 mb-1 flex items-center gap-2 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>);
+            renderedElements.push(<h3 key={`${i}-${j}`} className="text-sm font-bold mt-4 mb-2 flex items-center gap-2 border-l-2 border-[#1f6feb] pl-2">{line.replace('### ', '')}</h3>);
           } else if (line.startsWith('## ')) {
-            renderedElements.push(<h2 key={`${i}-${j}`} className="text-base font-bold text-white mt-4 mb-2 border-b border-[#30363d] pb-1">{line.replace('## ', '')}</h2>);
-          } else if (trimmedLine.match(/^[-*+]\s/)) {
+            renderedElements.push(<h2 key={`${i}-${j}`} className={`text-base font-bold mt-6 mb-3 border-b pb-1 ${isModel ? 'border-[#30363d]' : 'border-white/20'}`}>{line.replace('## ', '')}</h2>);
+          } else if (line.startsWith('# ')) {
+            renderedElements.push(<h1 key={`${i}-${j}`} className={`text-lg font-bold mt-8 mb-4 border-b-2 pb-2 ${isModel ? 'border-[#30363d]' : 'border-white/20'}`}>{line.replace('# ', '')}</h1>);
+          } else if (trimmed.match(/^[-*+]\s/)) {
             renderedElements.push(
               <div key={`${i}-${j}`} className="flex gap-2 pl-2 py-0.5">
-                <span className="text-[#1f6feb] mt-1 shrink-0 text-[10px]">●</span>
-                <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^[-*+]\s/, ''))}</span>
+                <span className={`mt-1.5 shrink-0 text-[10px] ${isModel ? 'text-[#1f6feb]' : 'text-white/60'}`}>●</span>
+                <span className="flex-1 leading-relaxed whitespace-pre-wrap">{parseInline(line.replace(/^[-*+]\s/, ''), isModel)}</span>
               </div>
             );
-          } else if (trimmedLine.match(/^\d+\.\s/)) {
-            const num = trimmedLine.match(/^\d+/)?.[0];
+          } else if (trimmed.match(/^\d+\.\s/)) {
+            const numMatch = trimmed.match(/^(\d+)\.\s/);
+            const num = numMatch ? numMatch[1] : '';
             renderedElements.push(
               <div key={`${i}-${j}`} className="flex gap-2 pl-2 py-0.5">
-                <span className="text-[#8b949e] font-mono text-xs mt-1 shrink-0">{num}.</span>
-                <span className="flex-1 leading-relaxed text-[#c9d1d9]">{parseInline(line.replace(/^\d+\.\s/, ''))}</span>
+                <span className={`font-mono text-xs mt-1 shrink-0 ${isModel ? 'text-[#8b949e]' : 'text-white/60'}`}>{num}.</span>
+                <span className="flex-1 leading-relaxed whitespace-pre-wrap">{parseInline(line.replace(/^\d+\.\s/, ''), isModel)}</span>
               </div>
             );
           } else {
-            renderedElements.push(<p key={`${i}-${j}`} className="leading-relaxed mb-1 text-[#c9d1d9]">{parseInline(line)}</p>);
+            renderedElements.push(<p key={`${i}-${j}`} className="leading-relaxed mb-1 whitespace-pre-wrap">{parseInline(line, isModel)}</p>);
           }
         }
 
@@ -150,15 +164,23 @@ const MarkdownMessage: React.FC<{ text: string; isModel: boolean }> = ({ text, i
   );
 };
 
-function parseInline(text: string) {
+function parseInline(text: string, isModel: boolean) {
   if (!text) return '';
   const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i} className="text-[#58a6ff] font-semibold">{part.slice(2, -2)}</strong>;
+      return <strong key={i} className={`font-semibold ${isModel ? 'text-[#58a6ff]' : 'text-white brightness-125'}`}>{part.slice(2, -2)}</strong>;
     }
     if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={i} className="bg-[#21262d] px-1.5 rounded text-[#f85149] font-mono text-[0.9em] mx-0.5">{part.slice(1, -1)}</code>;
+      return (
+        <code key={i} className={`px-1.5 py-0.5 rounded font-mono text-[0.9em] mx-0.5 shadow-sm border ${
+          isModel 
+            ? 'bg-[#21262d] text-[#f85149] border-[#30363d]' 
+            : 'bg-black/30 text-[#ff7b72] border-white/10'
+        }`}>
+          {part.slice(1, -1)}
+        </code>
+      );
     }
     return part;
   });
@@ -492,8 +514,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
         {messages.map((m, idx) => (
           <div key={idx} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} group animate-in fade-in slide-in-from-bottom-2`}>
             {m.role === 'user' ? (
-              <div className="max-w-[85%] bg-[#1f6feb] text-white rounded-2xl px-4 py-2 text-sm shadow-md leading-relaxed">
-                {m.text}
+              <div className="max-w-[85%] bg-[#1f6feb] text-white rounded-2xl px-5 py-3 text-sm shadow-md transition-all hover:shadow-lg">
+                <MarkdownMessage text={m.text} isModel={false} />
               </div>
             ) : (
               <div className="max-w-[95%] bg-[#161b22] border border-[#30363d] text-[#c9d1d9] rounded-2xl px-5 py-4 relative shadow-lg">
